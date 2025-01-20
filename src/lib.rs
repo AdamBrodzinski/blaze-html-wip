@@ -1,5 +1,5 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
+pub fn render_template_str(tmpl: &str, var_str: &str) -> String {
+    tmpl.replace("@name", var_str)
 }
 
 #[cfg(test)]
@@ -7,8 +7,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+    fn it_replaces_string_variable() {
+        let tmpl = "name: @name";
+        let result = render_template_str(tmpl, "Jane");
+        assert_eq!(result, "name: Jane");
     }
 }
