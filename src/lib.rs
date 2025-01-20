@@ -1,14 +1,17 @@
+use regex::Regex;
+
 pub type TmplData = std::collections::HashMap<String, String>;
 
 pub fn render_template_str(tmpl: &str, data: TmplData) -> String {
-    let mut foo: String = String::new();
-    for (key, value) in &data {
-        let key_attr = format!("@{}", key);
-        dbg!(&key_attr);
-        dbg!(value);
-        foo = tmpl.replace(&key_attr, value);
-    }
-    foo
+    let reg = Regex::new(r"@(\w+)").expect("Invalid regex");
+
+    reg.replace_all(tmpl, |caps: &regex::Captures| {
+        let placeholder = caps.get(1).unwrap().as_str();
+        dbg!(placeholder);
+        data.get(placeholder).unwrap()
+    })
+    .to_string()
+    //    .into_owned()
 }
 
 #[cfg(test)]
