@@ -1,27 +1,35 @@
+use std::time::Instant;
+
 use regex::Regex;
 use serde_json::Value;
 
 pub fn render_template_str(tmpl: &str, data: serde_json::Value) -> String {
+    let start = Instant::now();
     let reg = Regex::new(r"@(\w+)").expect("Invalid regex");
 
     // for each template @var_name, look to see if the hashmap has the key "var_name"
     // and replace with the hashmap value
-    reg.replace_all(tmpl, |caps: &regex::Captures| {
-        let key_name = caps.get(1).expect("expected 1 capture").as_str();
-        let entire_match = caps.get(0).unwrap().as_str();
+    let output = reg
+        .replace_all(tmpl, |caps: &regex::Captures| {
+            let key_name = caps.get(1).expect("expected 1 capture").as_str();
+            let entire_match = caps.get(0).unwrap().as_str();
 
-        match data.get(key_name) {
-            Some(Value::String(x)) => x.to_owned(),
-            Some(Value::Bool(x)) => x.to_string(),
-            Some(Value::Number(x)) => x.to_string(),
-            Some(Value::Null) => String::from(""),
-            Some(Value::Object(_)) => entire_match.to_string(),
-            // fallback to no change
-            Some(Value::Array(_)) => entire_match.to_string(),
-            None => entire_match.to_string(),
-        }
-    })
-    .to_string()
+            match data.get(key_name) {
+                Some(Value::String(x)) => x.to_owned(),
+                Some(Value::Bool(x)) => x.to_string(),
+                Some(Value::Number(x)) => x.to_string(),
+                Some(Value::Null) => String::from(""),
+                Some(Value::Object(_)) => entire_match.to_string(),
+                // fallback to no change
+                Some(Value::Array(_)) => entire_match.to_string(),
+                None => entire_match.to_string(),
+            }
+        })
+        .to_string();
+
+    let duration = start.elapsed();
+    dbg!("Time taken: {:?}", duration);
+    output
 }
 
 #[cfg(test)]
@@ -88,4 +96,14 @@ mod tests {
 
         assert_eq!(result, "name: @name");
     }
+
+    // #[test]
+    // fn it_renders_each_blocks() {
+    //     let tmpl = r#"hello "world" bar "#; // foo
+    //                                         // let data = json!({"never": "matches"});
+    //                                         //
+    //                                         // let result = render_template_str(tmpl, data);
+    //
+    //     assert_eq!(tmpl, "name: @name");
+    // }
 }
