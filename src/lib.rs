@@ -1,25 +1,5 @@
 use serde_json::Value;
 
-fn get_json_value<'a>(data: &'a Value, key: &str) -> Option<&'a Value> {
-    // current starts out as the json object
-    let mut current = data;
-
-    for segment in key.split('.') {
-        match current {
-            // check if current is an object
-            Value::Object(map) => {
-                // current for the last segment should be a non object value
-                current = map.get(segment)?;
-            }
-            // if current is not an object return early
-            // and don't change anything (noop)
-            _ => return None,
-        }
-    }
-
-    Some(current)
-}
-
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
@@ -38,22 +18,26 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
                 }
             }
 
+            // String type to satisfy match arms
+            let orig_var = || format!("@{}", key);
+
             if let Some(json_value) = get_json_value(data, &key) {
                 let value = match json_value {
                     Value::String(x) => x.to_owned(),
                     Value::Bool(x) => x.to_string(),
                     Value::Number(x) => x.to_string(),
                     Value::Null => String::new(),
-                    // fallback to no change
-                    Value::Object(_) => format!("@{}", key),
-                    Value::Array(_) => format!("@{}", key),
+                    // trying to access the entire object and using that as a template
+                    // value will not work, render noop instead
+                    Value::Object(_) => orig_var(),
+                    // todo
+                    Value::Array(_) => orig_var(),
                 };
                 result.push_str(&value)
             }
             // if data was not found with key, retain the original "@foo"
             else {
-                result.push('@');
-                result.push_str(&key);
+                result.push_str(orig_var().as_str());
             }
         }
         // normal character, add it to the result string
@@ -63,6 +47,28 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     }
 
     result
+}
+
+/// extracts the value out of a json data object. it is assumed that the
+/// json data is of type Object or it will return None, resultig in a noop
+fn get_json_value<'a>(data: &'a Value, key: &str) -> Option<&'a Value> {
+    // current starts out as the json object
+    let mut current = data;
+
+    for segment in key.split('.') {
+        match current {
+            // check if current is an object
+            Value::Object(map) => {
+                // current for the last segment should be a non object value
+                current = map.get(segment)?;
+            }
+            // if current is not an object return early
+            // and don't change anything (noop)
+            _ => return None,
+        }
+    }
+
+    Some(current)
 }
 
 #[cfg(test)]
