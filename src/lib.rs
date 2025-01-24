@@ -3,10 +3,11 @@ use serde_json::Value;
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
+    let mut last_char = ' ';
 
     // iterate over the template once, and buildup a new output (String)
     while let Some(c) = chars.next() {
-        if c == '@' {
+        if c == '@' && !last_char.is_ascii_alphanumeric() {
             // parse the @foo to get the json key name "foo"
             let mut key = String::with_capacity(10);
             while let Some(&next_c) = chars.peek() {
@@ -44,6 +45,7 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
         else {
             result.push(c);
         }
+        last_char = c;
     }
 
     result
@@ -132,6 +134,14 @@ mod tests {
         let result = render_template_str(tmpl, &data);
 
         assert_eq!(result, "name: @name");
+    }
+
+    #[test]
+    fn does_not_transform_emails() {
+        let tmpl = "foo@bar baz";
+        let data = json!({ "bar": "Jane" });
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "foo@bar baz");
     }
 
     // ----------- nested fields -----------
