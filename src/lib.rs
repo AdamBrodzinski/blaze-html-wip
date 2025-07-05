@@ -55,19 +55,9 @@ fn handle_component_elements(
     // in isolation and then the final result replaces the component tag. This can
     // be recursively called for the nested component use case.
     let processed_contents = if let Some(props_attr) = el.get_attribute("props") {
-        let props_data = {
-            get_json_value(data, &props_attr)
-                .cloned()
-                .unwrap_or(serde_json::Value::Null)
-        };
-
-        // Create enhanced data context with props
-        let mut enhanced_data = data.clone();
-        if let serde_json::Value::Object(ref mut map) = enhanced_data {
-            map.insert("props".to_string(), props_data);
-        }
-
-        replace_variables(contents.trim_end(), &enhanced_data)
+        let props_data = get_json_value(data, &props_attr)
+            .unwrap_or_else(|| panic!("Could not find component props data with key {props_attr}"));
+        replace_variables(contents.trim_end(), props_data)
     } else {
         replace_variables(contents.trim_end(), data)
     };
