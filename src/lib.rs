@@ -201,4 +201,16 @@ mod render_template_str_tests {
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "<div>Hello</div>");
     }
+
+    #[test]
+    fn includes_html_partials_test() {
+        // the `test_files` folder is in project root, the path should be relative
+        // to the cwd of the project where the crate is added in. ultimately the
+        // crate will be used in a web server app that server side renders html
+        let tmpl = "Hello <component path='/test_files/component.html' />";
+        let data = json!({ "not_used": 1 });
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Hello <div>Component</div>");
+    }
 }
