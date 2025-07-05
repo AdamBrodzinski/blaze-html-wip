@@ -236,6 +236,15 @@ mod render_template_str_tests {
     }
 
     #[test]
+    fn component_props_data_test() {
+        let tmpl = "<component props='@person' path='test_files/component-props.html' />";
+        let data = json!({"my_global": "Global", "person": {"name": "Jane"}});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "<div>Props name: Jane, global var: Global</div>");
+    }
+
+    #[test]
     #[should_panic(expected = "Could not read component file at 'invalid-path'")]
     fn component_missing_path_test() {
         let tmpl = "Hello <component path='invalid-path' />";
