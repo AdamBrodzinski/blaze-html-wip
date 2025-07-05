@@ -70,7 +70,7 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
 }
 
 /// extracts the value out of a json data object. it is assumed that the
-/// json data is of type Object or it will return None, resultig in a noop
+/// json data is of type Object or it will return None, resulting in a noop
 fn get_json_value<'a>(data: &'a Value, key: &str) -> Option<&'a Value> {
     // current starts out as the json object
     let mut current = data;
