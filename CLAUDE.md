@@ -40,6 +40,7 @@ cargo check          # Quick compile check
 cargo test           # Run all tests
 cargo test --lib     # Run unit tests only
 cargo test --doc     # Run documentation tests
+cargo bench          # Run performance benchmarks
 ```
 
 ### Development
@@ -52,6 +53,7 @@ cargo clippy         # Run linter
 ## Project Structure
 
 - `src/lib.rs` - Main library code with template rendering logic
+- `benches/template_bench.rs` - Performance benchmarks using Criterion
 - `Cargo.toml` - Project configuration with `serde_json` dependency
 - `todo.md` - Template syntax examples and development notes
 
@@ -61,4 +63,12 @@ The project has comprehensive unit tests covering:
 - Variable substitution (simple and nested)
 - Data type handling (strings, numbers, booleans, null)
 - Edge cases (missing variables, email addresses)
-- Performance timing for optimization
+
+Performance benchmarks using Criterion framework test:
+- Simple variable substitution
+- Boolean serialization
+- Nested field access
+- Deeply nested field access
+
+## LLM Rules
+- run `cargo fmt` after substantial code changes

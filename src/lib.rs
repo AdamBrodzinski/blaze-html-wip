@@ -95,19 +95,13 @@ fn get_json_value<'a>(data: &'a Value, key: &str) -> Option<&'a Value> {
 mod tests {
     use super::*;
     use serde_json::json;
-    use std::time::Instant;
 
     #[test]
     fn it_replaces_two_variables() {
         let data = json!({"name": "Jane", "age": "45"});
         let tmpl = "name: @name, age: @age";
 
-        let start = Instant::now();
-
         let result = render_template_str(tmpl, &data);
-
-        let duration = start.elapsed();
-        println!("Simple Time: {:?}", duration);
         assert_eq!(result, "name: Jane, age: 45");
     }
 
@@ -116,11 +110,7 @@ mod tests {
         let tmpl = "state: @is_open & is_on: false";
         let data = json!({"is_open": true, "is_on": false});
 
-        let start = Instant::now();
         let result = render_template_str(tmpl, &data);
-
-        let duration = start.elapsed();
-        println!("Bool Time: {:?}", duration);
         assert_eq!(result, "state: true & is_on: false");
     }
 
@@ -168,12 +158,7 @@ mod tests {
     fn it_returns_nested_fields() {
         let tmpl = "name: @person.name";
         let data = json!({ "person": { "name": "Jane" } });
-        let start = Instant::now();
-
         let result = render_template_str(tmpl, &data);
-
-        let duration = start.elapsed();
-        println!("Nested Time: {:?}", duration);
         assert_eq!(result, "name: Jane");
     }
 
@@ -181,12 +166,7 @@ mod tests {
     fn it_returns_deeply_nested_fields() {
         let tmpl = "name: @a.b.c";
         let data = json!({ "a": { "b": {"c": "foo"} } });
-        let start = Instant::now();
-
         let result = render_template_str(tmpl, &data);
-
-        let duration = start.elapsed();
-        println!("Deeply Nested Time: {:?}", duration);
         assert_eq!(result, "name: foo");
     }
 }
