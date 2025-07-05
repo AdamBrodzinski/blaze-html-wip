@@ -54,14 +54,12 @@ fn handle_component_elements(
     // value as the "data" for the component. the component is effectively rendered
     // in isolation and then the final result replaces the component tag. This can
     // be recursively called for the nested component use case.
-    let processed_contents = if let Some(props_attr) = el.get_attribute("props") {
-        let props_data = get_json_value(data, &props_attr)
-            .unwrap_or_else(|| panic!("Could not find component props data with key {props_attr}"));
-        replace_variables(contents.trim_end(), props_data)
-    } else {
-        replace_variables(contents.trim_end(), data)
+    let data = match el.get_attribute("props") {
+        Some(props_attr) => get_json_value(data, &props_attr)
+            .unwrap_or_else(|| panic!("Could not find component props data with key {props_attr}")),
+        None => data,
     };
-
+    let processed_contents = replace_variables(contents.trim_end(), data);
     el.replace(&processed_contents, ContentType::Html);
     Ok(())
 }
