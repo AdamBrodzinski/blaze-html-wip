@@ -16,38 +16,49 @@
 // do_foo();
 // ```
 
-use lol_html::html_content::ContentType;
+use lol_html::html_content::{Comment, ContentType, Element};
 use lol_html::{doc_comments, element, rewrite_str, RewriteStrSettings};
 use serde_json::Value;
 use std::fs;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    let template_with_vars = replace_variables(template, data);
-    rewrite_html(template_with_vars)
+    let template = rewrite_html(template);
+    replace_variables(&template, data)
 }
 
-fn rewrite_html(template: String) -> String {
+fn rewrite_html(template: &str) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("component", |el| {
-            let path = el
-                .get_attribute("path")
-                .expect("Could not find path attr on component");
-
-            let contents = fs::read_to_string(&path)
-                .unwrap_or_else(|_| panic!("Could not find component at path: {path}"));
-
-            el.replace(contents.trim_end(), ContentType::Html);
-            Ok(())
-        })],
-        document_content_handlers: vec![doc_comments!(|comment| {
-            comment.remove();
-            Ok(())
-        })],
+        element_content_handlers: vec![element!("component", handle_component_elements)],
+        document_content_handlers: vec![doc_comments!(remove_html_comments)],
         ..RewriteStrSettings::new()
     };
-    rewrite_str(&template, settings).unwrap_or(template)
+    // TODO: handle errors instead of falling back to empty template
+    rewrite_str(template, settings).unwrap_or_else(|_| template.to_string())
 }
 
+fn handle_component_elements(
+    el: &mut Element,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let path = el
+        .get_attribute("path")
+        .expect("Could not find path attr on component");
+
+    let contents = fs::read_to_string(&path)
+        .unwrap_or_else(|_| panic!("Could not read component file at '{path}'"));
+
+    el.replace(contents.trim_end(), ContentType::Html);
+    Ok(())
+}
+
+fn remove_html_comments(
+    comment: &mut Comment,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    comment.remove();
+    Ok(())
+}
+
+/// replaces any variables with the syntax "name: @name" with the value from Json({"name": "Jane"})
+/// with the result "name: Jane". Nested object values can be used with "@person.name.first"
 fn replace_variables(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
@@ -209,7 +220,7 @@ mod render_template_str_tests {
     #[test]
     fn removes_comments_test() {
         let tmpl = "<!-- comment --><div>Hello</div>";
-        let data = json!({ "foo": 1 });
+        let data = json!(());
 
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "<div>Hello</div>");
@@ -218,19 +229,18 @@ mod render_template_str_tests {
     #[test]
     fn component_happy_path_test() {
         let tmpl = "Hello <component path='test_files/component.html' />";
-        let data = json!({ "not_used": 1 });
+        let data = json!(());
 
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "Hello <div>Component</div>");
     }
 
     #[test]
-    #[should_panic(expected = "Could not read file at 'invalid-path'")]
+    #[should_panic(expected = "Could not read component file at 'invalid-path'")]
     fn component_missing_path_test() {
         let tmpl = "Hello <component path='invalid-path' />";
-        let data = json!({ "not_used": 1 });
+        let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "Hello <div>Component</div>");
+        render_template_str(tmpl, &data);
     }
 }
