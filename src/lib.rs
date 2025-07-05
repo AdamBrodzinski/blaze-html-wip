@@ -16,12 +16,23 @@
 // do_foo();
 // ```
 
+use lol_html::{doc_comments, rewrite_str, RewriteStrSettings};
 use serde_json::Value;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    let template = replace_variables(template, data);
-    println!("{}", &template);
-    template
+    let template_with_vars = replace_variables(template, data);
+    rewrite_html(template_with_vars)
+}
+
+fn rewrite_html(template: String) -> String {
+    let settings = RewriteStrSettings {
+        document_content_handlers: vec![doc_comments!(|comment| {
+            comment.remove();
+            Ok(())
+        })],
+        ..RewriteStrSettings::new()
+    };
+    rewrite_str(&template, settings).unwrap_or(template)
 }
 
 fn replace_variables(template: &str, data: &serde_json::Value) -> String {
