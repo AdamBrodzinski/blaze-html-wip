@@ -49,19 +49,16 @@ fn handle_component_elements(
     let contents = fs::read_to_string(&path)
         .unwrap_or_else(|_| panic!("Could not read component file at '{path}'"));
 
-    // Check if component has props attribute
+    // check if the component has a props variable, if it does, find the props key,
+    // extract the JSON data from the template_data by the props key, and set that
+    // value as the "data" for the component. the component is effectively rendered
+    // in isolation and then the final result replaces the component tag. This can
+    // be recursively called for the nested component use case.
     let processed_contents = if let Some(props_attr) = el.get_attribute("props") {
-        // Parse props attribute value
-        let props_data = if props_attr.starts_with('@') {
-            // Extract variable name (remove @ prefix)
-            let var_name = &props_attr[1..];
-            // Get the value from data
-            get_json_value(data, var_name)
+        let props_data = {
+            get_json_value(data, &props_attr)
                 .cloned()
                 .unwrap_or(serde_json::Value::Null)
-        } else {
-            // For now, only support variable references
-            serde_json::Value::Null
         };
 
         // Create enhanced data context with props
@@ -70,10 +67,8 @@ fn handle_component_elements(
             map.insert("props".to_string(), props_data);
         }
 
-        // Process component template with variable replacement
         replace_variables(contents.trim_end(), &enhanced_data)
     } else {
-        // No props, just process with global data
         replace_variables(contents.trim_end(), data)
     };
 
@@ -268,7 +263,7 @@ mod render_template_str_tests {
 
     #[test]
     fn component_props_data_test() {
-        let tmpl = "<component props='@person' path='test_files/component-props.html' />";
+        let tmpl = "<component props='person' path='test_files/component-props.html' />";
         let data = json!({"my_global": "Global", "person": {"name": "Jane"}});
 
         let result = render_template_str(tmpl, &data);
