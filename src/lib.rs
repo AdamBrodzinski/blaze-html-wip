@@ -19,7 +19,9 @@
 use serde_json::Value;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    replace_variables(template, data)
+    let template = replace_variables(template, data);
+    println!("{}", &template);
+    template
 }
 
 fn replace_variables(template: &str, data: &serde_json::Value) -> String {
@@ -172,5 +174,20 @@ mod replace_variables_tests {
         let data = json!({ "a": { "b": {"c": "foo"} } });
         let result = replace_variables(tmpl, &data);
         assert_eq!(result, "name: foo");
+    }
+}
+
+#[cfg(test)]
+mod render_template_str_tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn removes_comments_test() {
+        let tmpl = "<!-- comment --><div>Hello</div>";
+        let data = json!({ "foo": 1 });
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "<div>Hello</div>");
     }
 }
