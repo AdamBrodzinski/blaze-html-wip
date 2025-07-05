@@ -19,6 +19,10 @@
 use serde_json::Value;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
+    replace_variables(template, data)
+}
+
+fn replace_variables(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
     let mut last_char = ' ';
@@ -92,7 +96,7 @@ fn get_json_value<'a>(data: &'a Value, key: &str) -> Option<&'a Value> {
 }
 
 #[cfg(test)]
-mod tests {
+mod replace_variables_tests {
     use super::*;
     use serde_json::json;
 
@@ -101,7 +105,7 @@ mod tests {
         let data = json!({"name": "Jane", "age": "45"});
         let tmpl = "name: @name, age: @age";
 
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
         assert_eq!(result, "name: Jane, age: 45");
     }
 
@@ -110,7 +114,7 @@ mod tests {
         let tmpl = "state: @is_open & is_on: false";
         let data = json!({"is_open": true, "is_on": false});
 
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
         assert_eq!(result, "state: true & is_on: false");
     }
 
@@ -119,7 +123,7 @@ mod tests {
         let tmpl = "@a, @b, @c, @d";
         let data = json!({"a": 1, "b": 2.0, "c": -3, "d": 0.44});
 
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
 
         assert_eq!(result, "1, 2.0, -3, 0.44");
     }
@@ -129,7 +133,7 @@ mod tests {
         let tmpl = "name: @name";
         let data = json!({"name": null});
 
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
 
         assert_eq!(result, "name: ");
     }
@@ -139,7 +143,7 @@ mod tests {
         let tmpl = "name: @name";
         let data = json!({"never": "matches"});
 
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
 
         assert_eq!(result, "name: @name");
     }
@@ -148,7 +152,7 @@ mod tests {
     fn does_not_transform_emails() {
         let tmpl = "foo@bar baz";
         let data = json!({ "bar": "Jane" });
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
         assert_eq!(result, "foo@bar baz");
     }
 
@@ -158,7 +162,7 @@ mod tests {
     fn it_returns_nested_fields() {
         let tmpl = "name: @person.name";
         let data = json!({ "person": { "name": "Jane" } });
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
         assert_eq!(result, "name: Jane");
     }
 
@@ -166,7 +170,7 @@ mod tests {
     fn it_returns_deeply_nested_fields() {
         let tmpl = "name: @a.b.c";
         let data = json!({ "a": { "b": {"c": "foo"} } });
-        let result = render_template_str(tmpl, &data);
+        let result = replace_variables(tmpl, &data);
         assert_eq!(result, "name: foo");
     }
 }
