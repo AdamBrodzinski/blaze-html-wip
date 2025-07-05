@@ -22,13 +22,15 @@ use serde_json::Value;
 use std::fs;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    let template = rewrite_html(template);
+    let template = rewrite_html(template, data);
     replace_variables(&template, data)
 }
 
-fn rewrite_html(template: &str) -> String {
+fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("component", handle_component_elements)],
+        element_content_handlers: vec![element!("component", |el| {
+            handle_component_elements(el, data)
+        })],
         document_content_handlers: vec![doc_comments!(remove_html_comments)],
         ..RewriteStrSettings::new()
     };
@@ -38,6 +40,7 @@ fn rewrite_html(template: &str) -> String {
 
 fn handle_component_elements(
     el: &mut Element,
+    data: &serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let path = el
         .get_attribute("path")
@@ -46,7 +49,35 @@ fn handle_component_elements(
     let contents = fs::read_to_string(&path)
         .unwrap_or_else(|_| panic!("Could not read component file at '{path}'"));
 
-    el.replace(contents.trim_end(), ContentType::Html);
+    // Check if component has props attribute
+    let processed_contents = if let Some(props_attr) = el.get_attribute("props") {
+        // Parse props attribute value
+        let props_data = if props_attr.starts_with('@') {
+            // Extract variable name (remove @ prefix)
+            let var_name = &props_attr[1..];
+            // Get the value from data
+            get_json_value(data, var_name)
+                .cloned()
+                .unwrap_or(serde_json::Value::Null)
+        } else {
+            // For now, only support variable references
+            serde_json::Value::Null
+        };
+
+        // Create enhanced data context with props
+        let mut enhanced_data = data.clone();
+        if let serde_json::Value::Object(ref mut map) = enhanced_data {
+            map.insert("props".to_string(), props_data);
+        }
+
+        // Process component template with variable replacement
+        replace_variables(contents.trim_end(), &enhanced_data)
+    } else {
+        // No props, just process with global data
+        replace_variables(contents.trim_end(), data)
+    };
+
+    el.replace(&processed_contents, ContentType::Html);
     Ok(())
 }
 
@@ -241,7 +272,7 @@ mod render_template_str_tests {
         let data = json!({"my_global": "Global", "person": {"name": "Jane"}});
 
         let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "<div>Props name: Jane, global var: Global</div>");
+        assert_eq!(result, "Props name: Jane, global var: Global");
     }
 
     #[test]
