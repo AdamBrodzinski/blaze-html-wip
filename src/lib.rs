@@ -1,3 +1,21 @@
+//! # Blaze HTML
+//!
+//! This crate provides another syntax for html templating that works with any
+//! HTML formatter/parser. The syntax is similar to web components and tries to
+//!
+//! ## Features
+//! - Variable replacement with context
+//!
+//! ## Todo
+//! - <each> block
+//! - <component name="foo" path="/src/templates/foo.html"> include html snippets
+//!
+// ## Example
+// ```rust
+// use my_crate::do_foo;
+// do_foo();
+// ```
+
 use serde_json::Value;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
