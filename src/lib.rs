@@ -16,8 +16,10 @@
 // do_foo();
 // ```
 
-use lol_html::{doc_comments, rewrite_str, RewriteStrSettings};
+use lol_html::html_content::ContentType;
+use lol_html::{doc_comments, element, rewrite_str, RewriteStrSettings};
 use serde_json::Value;
+use std::fs;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     let template_with_vars = replace_variables(template, data);
@@ -26,6 +28,17 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
 
 fn rewrite_html(template: String) -> String {
     let settings = RewriteStrSettings {
+        element_content_handlers: vec![element!("component", |el| {
+            let path = el
+                .get_attribute("path")
+                .expect("Could not find path attr on component");
+
+            let contents = fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("Could not find component at path: {path}"));
+
+            el.replace(contents.trim_end(), ContentType::Html);
+            Ok(())
+        })],
         document_content_handlers: vec![doc_comments!(|comment| {
             comment.remove();
             Ok(())
@@ -203,11 +216,18 @@ mod render_template_str_tests {
     }
 
     #[test]
-    fn includes_html_partials_test() {
-        // the `test_files` folder is in project root, the path should be relative
-        // to the cwd of the project where the crate is added in. ultimately the
-        // crate will be used in a web server app that server side renders html
-        let tmpl = "Hello <component path='/test_files/component.html' />";
+    fn component_happy_path_test() {
+        let tmpl = "Hello <component path='test_files/component.html' />";
+        let data = json!({ "not_used": 1 });
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Hello <div>Component</div>");
+    }
+
+    #[test]
+    #[should_panic(expected = "Could not read file at 'invalid-path'")]
+    fn component_missing_path_test() {
+        let tmpl = "Hello <component path='invalid-path' />";
         let data = json!({ "not_used": 1 });
 
         let result = render_template_str(tmpl, &data);
