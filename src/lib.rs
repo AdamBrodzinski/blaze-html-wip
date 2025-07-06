@@ -60,6 +60,10 @@ fn handle_component_elements(
         None => data,
     };
     let processed_contents = replace_variables(contents.trim_end(), data);
+
+    // handle nested components
+    // todo, should data in this template be props or 'root' data
+    let processed_contents = render_template_str(&processed_contents, data);
     el.replace(&processed_contents, ContentType::Html);
     Ok(())
 }
@@ -247,6 +251,15 @@ mod render_template_str_tests {
 
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "Hello <div>Component</div>");
+    }
+
+    #[test]
+    fn component_nested_test() {
+        let tmpl = "<component path='test_files/component-props-nested.html' />";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Nested <div>Component</div>");
     }
 
     #[test]
