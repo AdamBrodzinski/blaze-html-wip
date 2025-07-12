@@ -75,20 +75,17 @@ fn handle_each_elements(
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let inner_content = "Hello";
 
-    // Get the items attribute to know which array to look at
-    let items_key = el.get_attribute("items").unwrap_or("items".to_string());
+    let items_key = el
+        .get_attribute("items")
+        .expect("Expected items to contain an 'items' attr");
 
-    // Get the array from data and determine its length
-    let array_value = get_json_value(data, &items_key).expect(&format!(
-        "Could not find array data with key '{}'",
-        items_key
-    ));
-    let array = array_value
+    let array = get_json_value(data, &items_key)
+        .unwrap_or_else(|| panic!("Could not find array data with key '{items_key}'"))
         .as_array()
-        .expect(&format!("Data at key '{}' is not an array", items_key));
+        .unwrap_or_else(|| panic!("Data at key '{items_key}' is not an array"));
+
     let array_length = array.len();
 
-    // Repeat the inner content based on array length
     let repeated_content = inner_content.repeat(array_length);
 
     el.replace(&repeated_content, ContentType::Html);
