@@ -129,11 +129,20 @@ mod render_template_str_tests {
     }
 
     #[test]
-    fn each_block_basic_test() {
-        let tmpl = "List: <each>Hello</each>";
-        let data = json!({"items": ["a", "b"]});
+    fn each_block_basic_two_items_test() {
+        let tmpl = "List: <each items='list'>Hello</each>";
+        let data_1 = json!({"list": ["a", "b"]});
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "List: HelloHello");
+        let result1 = render_template_str(tmpl, &data_1);
+        assert_eq!(result1, "List: HelloHello");
+    }
+
+    #[test]
+    fn each_block_basic_three_items_test() {
+        let tmpl = "List: <each items='list'>Hello</each>";
+        let data_2 = json!({"list": ["a", "b", "c"]});
+
+        let result2 = render_template_str(tmpl, &data_2);
+        assert_eq!(result2, "List: HelloHelloHello");
     }
 }
