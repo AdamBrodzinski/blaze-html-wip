@@ -79,15 +79,14 @@ fn handle_each_elements(
     let items_key = el.get_attribute("items").unwrap_or("items".to_string());
 
     // Get the array from data and determine its length
-    let array_length = if let Some(array_value) = get_json_value(data, &items_key) {
-        if let Some(array) = array_value.as_array() {
-            array.len()
-        } else {
-            0
-        }
-    } else {
-        0
-    };
+    let array_value = get_json_value(data, &items_key).expect(&format!(
+        "Could not find array data with key '{}'",
+        items_key
+    ));
+    let array = array_value
+        .as_array()
+        .expect(&format!("Data at key '{}' is not an array", items_key));
+    let array_length = array.len();
 
     // Repeat the inner content based on array length
     let repeated_content = inner_content.repeat(array_length);
