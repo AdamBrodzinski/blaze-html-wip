@@ -30,9 +30,10 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
 
 fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("component", |el| {
-            handle_component_elements(el, data)
-        })],
+        element_content_handlers: vec![
+            element!("component", |el| { handle_component_elements(el, data) }),
+            element!("each", |el| { handle_each_elements(el, data) }),
+        ],
         document_content_handlers: vec![doc_comments!(remove_html_comments)],
         ..RewriteStrSettings::new()
     };
@@ -65,6 +66,17 @@ fn handle_component_elements(
     let processed_contents = replace_variables(contents.trim_end(), conditional_data);
 
     el.replace(&processed_contents, ContentType::Html);
+    Ok(())
+}
+
+fn handle_each_elements(
+    el: &mut Element,
+    _data: &serde_json::Value,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    let inner_content = "Hello";
+    let repeated_content = format!("{}{}", inner_content, inner_content);
+
+    el.replace(&repeated_content, ContentType::Html);
     Ok(())
 }
 
