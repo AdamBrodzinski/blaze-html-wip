@@ -6,7 +6,8 @@
       "WebFetch(domain:docs.rs)",
       "Bash(cargo doc:*)",
       "Bash(cargo test:*)",
-      "Bash(cargo fmt:*)"
+      "Bash(cargo fmt:*)",
+      "Bash(cargo check:*)"
     ],
     "deny": []
   }
