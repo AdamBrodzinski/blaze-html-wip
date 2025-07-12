@@ -71,10 +71,26 @@ fn handle_component_elements(
 
 fn handle_each_elements(
     el: &mut Element,
-    _data: &serde_json::Value,
+    data: &serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let inner_content = "Hello";
-    let repeated_content = format!("{}{}", inner_content, inner_content);
+
+    // Get the items attribute to know which array to look at
+    let items_key = el.get_attribute("items").unwrap_or("items".to_string());
+
+    // Get the array from data and determine its length
+    let array_length = if let Some(array_value) = get_json_value(data, &items_key) {
+        if let Some(array) = array_value.as_array() {
+            array.len()
+        } else {
+            0
+        }
+    } else {
+        0
+    };
+
+    // Repeat the inner content based on array length
+    let repeated_content = inner_content.repeat(array_length);
 
     el.replace(&repeated_content, ContentType::Html);
     Ok(())
