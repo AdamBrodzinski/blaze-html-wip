@@ -115,4 +115,13 @@ mod render_template_str_tests {
 
         render_template_str(tmpl, &data);
     }
+
+    #[test]
+    fn each_block_basic_test() {
+        let tmpl = "List: <each>Hello</each>";
+        let data = json!({"items": ["a", "b"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "List: HelloHello");
+    }
 }
