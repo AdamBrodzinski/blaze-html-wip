@@ -289,22 +289,21 @@ mod render_template_str_tests {
         assert_eq!(result, "<each>Content without closing");
     }
 
-    // ignore these for now, later we will pass data through
-    // #[test]
-    // fn each_block_basic_two_items_test() {
-    //     let tmpl = "List: <each items='list'>Hello</each>";
-    //     let data_1 = json!({"list": ["a", "b"]});
-    //
-    //     let result1 = render_template_str(tmpl, &data_1);
-    //     assert_eq!(result1, "List: HelloHello");
-    // }
-    //
-    // #[test]
-    // fn each_block_basic_three_items_test() {
-    //     let tmpl = "List: <each items='list'>Hello</each>";
-    //     let data_2 = json!({"list": ["a", "b", "c"]});
-    //
-    //     let result2 = render_template_str(tmpl, &data_2);
-    //     assert_eq!(result2, "List: HelloHelloHello");
-    // }
+    #[test]
+    fn each_block_basic_two_items_test() {
+        let tmpl = "List: <each items='list'>Hello</each>";
+        let data_1 = json!({"list": ["a", "b"]});
+
+        let result1 = render_template_str(tmpl, &data_1);
+        assert_eq!(result1, "List: HelloHello");
+    }
+
+    #[test]
+    fn each_block_basic_three_items_test() {
+        let tmpl = "List: <each items='list'>Hello</each>";
+        let data_2 = json!({"list": ["a", "b", "c"]});
+
+        let result2 = render_template_str(tmpl, &data_2);
+        assert_eq!(result2, "List: HelloHelloHello");
+    }
 }
