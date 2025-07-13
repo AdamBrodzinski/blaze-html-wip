@@ -1,4 +1,4 @@
-use crate::variables::get_json_value;
+use crate::data::get_json_value;
 
 pub fn rewrite_each(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());

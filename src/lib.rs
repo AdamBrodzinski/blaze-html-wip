@@ -16,7 +16,6 @@
 mod data;
 mod html;
 mod variables;
-use data::get_json_value;
 use html::{rewrite_comments, rewrite_component, rewrite_each};
 use variables::replace_variables;
 

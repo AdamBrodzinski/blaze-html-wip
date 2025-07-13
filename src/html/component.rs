@@ -1,4 +1,5 @@
-use crate::variables::{get_json_value, replace_variables};
+use crate::data::get_json_value;
+use crate::variables::replace_variables;
 use lol_html::html_content::ContentType;
 use lol_html::{element, rewrite_str, RewriteStrSettings};
 use std::fs;
