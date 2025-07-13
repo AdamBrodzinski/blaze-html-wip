@@ -22,14 +22,14 @@ use variables::{get_json_value, replace_variables};
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     // println!("{template}");
-    let template_w_each = rewrite_each_tags(template);
+    let template_w_each = rewrite_each_tags(template, data);
     // println!("{template_w_each}");
     let template = rewrite_html(&template_w_each, data);
     // println!("{template}");
     replace_variables(&template, data)
 }
 
-fn rewrite_each_tags(template: &str) -> String {
+fn rewrite_each_tags(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut remaining = template;
 
@@ -64,6 +64,13 @@ fn rewrite_each_tags(template: &str) -> String {
                     }
 
                     if tag_end_pos > 0 || (after_tag.chars().next() == Some('>')) {
+                        // Extract the full opening tag to parse attributes
+                        let opening_tag = &after_tag[..tag_end_pos];
+
+                        // Parse the items attribute
+                        let items_key = parse_items_attribute(opening_tag)
+                            .expect("each tag must have an 'items' attribute");
+
                         let pos_after_open = start_pos + 5 + tag_end_pos + 1;
 
                         // Now find the matching closing tag, handling nesting
@@ -91,7 +98,20 @@ fn rewrite_each_tags(template: &str) -> String {
                                 if depth == 0 {
                                     // Found matching closing tag
                                     let content = &remaining[pos_after_open..search_pos];
-                                    result.push_str(content);
+
+                                    // Look up the array data
+                                    let array_data = get_json_value(data, &items_key)
+                                        .expect("items attribute must reference valid data");
+                                    let array = array_data
+                                        .as_array()
+                                        .expect("items must reference an array");
+
+                                    // Repeat content for each item in array
+                                    if !array.is_empty() {
+                                        let repeated = content.repeat(array.len());
+                                        result.push_str(&repeated);
+                                    }
+
                                     remaining = &remaining[search_pos + 7..];
                                     continue 'outer;
                                 }
@@ -127,6 +147,22 @@ fn rewrite_each_tags(template: &str) -> String {
     }
 
     result
+}
+
+fn parse_items_attribute(tag_content: &str) -> Option<String> {
+    // Look for items='value' or items="value"
+    if let Some(items_pos) = tag_content.find("items=") {
+        let after_items = &tag_content[items_pos + 6..];
+        if let Some(quote_char) = after_items.chars().next() {
+            if quote_char == '"' || quote_char == '\'' {
+                // Find closing quote
+                if let Some(end_pos) = after_items[1..].find(quote_char) {
+                    return Some(after_items[1..end_pos + 1].to_string());
+                }
+            }
+        }
+    }
+    None
 }
 
 fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
@@ -218,57 +254,57 @@ mod render_template_str_tests {
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn basic_each_replacement() {
         let tmpl = "List: <each anything='foo'>Hello</each>";
         let data_1 = json!(()); // no data needed yet
 
-        let result1 = render_template_str(tmpl, &data_1);
-        assert_eq!(result1, "List: Hello");
+        render_template_str(tmpl, &data_1);
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn nested_each_tags() {
         let tmpl = "<each>outer <each>inner</each> more</each>";
         let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "outer <each>inner</each> more");
+        render_template_str(tmpl, &data);
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn multiple_each_siblings() {
         let tmpl = "<each>First</each> middle <each>Second</each>";
         let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "First middle Second");
+        render_template_str(tmpl, &data);
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn deeply_nested_each() {
         let tmpl = "<each>1 <each>2 <each>3</each> 2end</each> 1end</each>";
         let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "1 <each>2 <each>3</each> 2end</each> 1end");
+        render_template_str(tmpl, &data);
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn each_with_attributes() {
         let tmpl = r#"<each class="test" id="1">Content</each>"#;
         let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "Content");
+        render_template_str(tmpl, &data);
     }
 
     #[test]
+    #[should_panic(expected = "each tag must have an 'items' attribute")]
     fn each_with_quoted_gt() {
         let tmpl = r#"<each attr="value > test">Content</each>"#;
         let data = json!(());
 
-        let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "Content");
+        render_template_str(tmpl, &data);
     }
 
     #[test]
@@ -282,11 +318,11 @@ mod render_template_str_tests {
 
     #[test]
     fn unclosed_each_tag() {
-        let tmpl = "<each>Content without closing";
-        let data = json!(());
+        let tmpl = "<each items='list'>Content without closing";
+        let data = json!({"list": ["a"]});
 
         let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "<each>Content without closing");
+        assert_eq!(result, "<each items='list'>Content without closing");
     }
 
     #[test]
@@ -305,5 +341,62 @@ mod render_template_str_tests {
 
         let result2 = render_template_str(tmpl, &data_2);
         assert_eq!(result2, "List: HelloHelloHello");
+    }
+
+    #[test]
+    fn each_empty_array() {
+        let tmpl = "Before<each items='list'>Item</each>After";
+        let data = json!({"list": []});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "BeforeAfter");
+    }
+
+    #[test]
+    #[should_panic(expected = "items attribute must reference valid data")]
+    fn each_missing_data_key() {
+        let tmpl = "<each items='missing'>Content</each>";
+        let data = json!({});
+
+        render_template_str(tmpl, &data);
+    }
+
+    #[test]
+    #[should_panic(expected = "items must reference an array")]
+    fn each_non_array_data() {
+        let tmpl = "<each items='notarray'>Content</each>";
+        let data = json!({"notarray": "string"});
+
+        render_template_str(tmpl, &data);
+    }
+
+    #[test]
+    fn each_with_nested_preserves_inner() {
+        let tmpl = "<each items='list'>Outer <each items='inner'>Inner</each> End</each>";
+        let data = json!({"list": ["a", "b"], "inner": ["x"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(
+            result,
+            "Outer <each items='inner'>Inner</each> EndOuter <each items='inner'>Inner</each> End"
+        );
+    }
+
+    #[test]
+    fn each_with_single_quotes() {
+        let tmpl = "<each items='list'>Hi</each>";
+        let data = json!({"list": ["x", "y"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "HiHi");
+    }
+
+    #[test]
+    fn each_with_double_quotes() {
+        let tmpl = r#"<each items="list">Hi</each>"#;
+        let data = json!({"list": ["x", "y"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "HiHi");
     }
 }
