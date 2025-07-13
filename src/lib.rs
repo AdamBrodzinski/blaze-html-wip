@@ -21,17 +21,112 @@ mod variables;
 use variables::{get_json_value, replace_variables};
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
+    // println!("{template}");
     let template_w_each = rewrite_each_tags(template);
-    println!("{template_w_each}");
-    let template = rewrite_html(template, data);
+    // println!("{template_w_each}");
+    let template = rewrite_html(&template_w_each, data);
+    // println!("{template}");
     replace_variables(&template, data)
 }
 
 fn rewrite_each_tags(template: &str) -> String {
-    // todo, convert each here.
-    // the first iteration will not have any data passing in.
-    // it just needs to replace <each attrs...>Inner</each> with 'Inner'
-    String::new()
+    let mut result = String::with_capacity(template.len());
+    let mut remaining = template;
+
+    'outer: while !remaining.is_empty() {
+        // Find the next <each tag
+        if let Some(start_pos) = remaining.find("<each") {
+            // Add everything before the tag
+            result.push_str(&remaining[..start_pos]);
+
+            // Check if this is a valid tag (followed by > or whitespace)
+            let after_tag = &remaining[start_pos + 5..];
+            if !after_tag.is_empty() {
+                let first_char = after_tag.chars().next().unwrap();
+                if first_char == '>' || first_char.is_whitespace() {
+                    // Find the end of the opening tag, handling attributes with quotes
+                    let mut tag_end_pos = 0;
+                    let mut in_quotes = false;
+                    let mut quote_char = '\0';
+
+                    for (i, ch) in after_tag.char_indices() {
+                        if !in_quotes && ch == '>' {
+                            tag_end_pos = i;
+                            break;
+                        } else if ch == '"' || ch == '\'' {
+                            if !in_quotes {
+                                in_quotes = true;
+                                quote_char = ch;
+                            } else if ch == quote_char {
+                                in_quotes = false;
+                            }
+                        }
+                    }
+
+                    if tag_end_pos > 0 || (after_tag.chars().next() == Some('>')) {
+                        let pos_after_open = start_pos + 5 + tag_end_pos + 1;
+
+                        // Now find the matching closing tag, handling nesting
+                        let mut depth = 1;
+                        let mut search_pos = pos_after_open;
+
+                        while depth > 0 && search_pos < remaining.len() {
+                            // Look for either <each or </each
+                            if search_pos + 5 <= remaining.len()
+                                && remaining[search_pos..].starts_with("<each")
+                            {
+                                // Check if it's a valid opening tag
+                                if search_pos + 5 < remaining.len() {
+                                    let next_char = remaining.as_bytes()[search_pos + 5];
+                                    if next_char == b'>' || next_char.is_ascii_whitespace() {
+                                        depth += 1;
+                                        search_pos += 5;
+                                        continue;
+                                    }
+                                }
+                            } else if search_pos + 7 <= remaining.len()
+                                && remaining[search_pos..].starts_with("</each>")
+                            {
+                                depth -= 1;
+                                if depth == 0 {
+                                    // Found matching closing tag
+                                    let content = &remaining[pos_after_open..search_pos];
+                                    result.push_str(content);
+                                    remaining = &remaining[search_pos + 7..];
+                                    continue 'outer;
+                                }
+                                search_pos += 7;
+                                continue;
+                            }
+                            search_pos += 1;
+                        }
+
+                        // If we get here, no matching closing tag was found
+                        result.push_str(&remaining[start_pos..]);
+                        break;
+                    } else {
+                        // No closing > for opening tag
+                        result.push_str(&remaining[start_pos..]);
+                        break;
+                    }
+                } else {
+                    // Not a valid <each tag (e.g., <eachother>)
+                    result.push_str(&remaining[start_pos..start_pos + 5]);
+                    remaining = &remaining[start_pos + 5..];
+                }
+            } else {
+                // End of string after <each
+                result.push_str(&remaining[start_pos..]);
+                break;
+            }
+        } else {
+            // No more <each tags
+            result.push_str(remaining);
+            break;
+        }
+    }
+
+    result
 }
 
 fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
@@ -122,14 +217,76 @@ mod render_template_str_tests {
         render_template_str(tmpl, &data);
     }
 
-    // TODO this test will fail and needs the implementation feature added
     #[test]
     fn basic_each_replacement() {
         let tmpl = "List: <each anything='foo'>Hello</each>";
         let data_1 = json!(()); // no data needed yet
 
         let result1 = render_template_str(tmpl, &data_1);
-        assert_eq!(result1, "Hello");
+        assert_eq!(result1, "List: Hello");
+    }
+
+    #[test]
+    fn nested_each_tags() {
+        let tmpl = "<each>outer <each>inner</each> more</each>";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "outer <each>inner</each> more");
+    }
+
+    #[test]
+    fn multiple_each_siblings() {
+        let tmpl = "<each>First</each> middle <each>Second</each>";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "First middle Second");
+    }
+
+    #[test]
+    fn deeply_nested_each() {
+        let tmpl = "<each>1 <each>2 <each>3</each> 2end</each> 1end</each>";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "1 <each>2 <each>3</each> 2end</each> 1end");
+    }
+
+    #[test]
+    fn each_with_attributes() {
+        let tmpl = r#"<each class="test" id="1">Content</each>"#;
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Content");
+    }
+
+    #[test]
+    fn each_with_quoted_gt() {
+        let tmpl = r#"<each attr="value > test">Content</each>"#;
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Content");
+    }
+
+    #[test]
+    fn not_each_tag() {
+        let tmpl = "<eachother>Content</eachother>";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "<eachother>Content</eachother>");
+    }
+
+    #[test]
+    fn unclosed_each_tag() {
+        let tmpl = "<each>Content without closing";
+        let data = json!(());
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "<each>Content without closing");
     }
 
     // ignore these for now, later we will pass data through
