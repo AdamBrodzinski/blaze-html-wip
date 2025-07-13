@@ -33,9 +33,7 @@ pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
 
 fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("component", |el| {
-            handle_component_elements(el, data)
-        })],
+        element_content_handlers: vec![element!("component", |el| { rewrite_component(el, data) })],
         document_content_handlers: vec![doc_comments!(remove_html_comments)],
         ..RewriteStrSettings::new()
     };
@@ -43,7 +41,7 @@ fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
     rewrite_str(template, settings).unwrap_or_else(|_| template.to_string())
 }
 
-fn handle_component_elements(
+fn rewrite_component(
     el: &mut Element,
     data: &serde_json::Value,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
