@@ -23,57 +23,55 @@ use html::rewrite_each_tags;
 use variables::{get_json_value, replace_variables};
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    // println!("{template}");
-    let template_w_each = rewrite_each_tags(template, data);
-    // println!("{template_w_each}");
-    let template = rewrite_html(&template_w_each, data);
-    // println!("{template}");
+    let template = rewrite_each_tags(template, data);
+    let template = rewrite_component(&template, data);
+    let template = rewrite_comments(&template);
     replace_variables(&template, data)
 }
 
-fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
+fn rewrite_comments(template: &str) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![element!("component", |el| { rewrite_component(el, data) })],
-        document_content_handlers: vec![doc_comments!(remove_html_comments)],
+        document_content_handlers: vec![doc_comments!(|comment| {
+            comment.remove();
+            Ok(())
+        })],
         ..RewriteStrSettings::new()
     };
     // TODO: handle errors instead of falling back to empty template
     rewrite_str(template, settings).unwrap_or_else(|_| template.to_string())
 }
 
-fn rewrite_component(
-    el: &mut Element,
-    data: &serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let path = el
-        .get_attribute("path")
-        .expect("Could not find path attr on component");
+fn rewrite_component(template: &str, data: &serde_json::Value) -> String {
+    let settings = RewriteStrSettings {
+        element_content_handlers: vec![element!("component", |el| {
+            let path = el
+                .get_attribute("path")
+                .expect("Could not find path attr on component");
 
-    let contents = fs::read_to_string(&path)
-        .unwrap_or_else(|_| panic!("Could not read component file at '{path}'"));
+            let contents = fs::read_to_string(&path)
+                .unwrap_or_else(|_| panic!("Could not read component file at '{path}'"));
 
-    // check if the component has a props variable, if it does, find the props key,
-    // extract the JSON data from the template_data by the props key, and set that
-    // value as the "data" for the component. the component is effectively rendered
-    // in isolation and then the final result replaces the component tag. This can
-    // be recursively called for the nested component use case, but the nested template
-    // only has access to the data passed in from the parent
-    let conditional_data = match el.get_attribute("props") {
-        Some(props_attr) => get_json_value(data, &props_attr)
-            .unwrap_or_else(|| panic!("Could not find component props data with key {props_attr}")),
-        None => data,
+            // check if the component has a props variable, if it does, find the props key,
+            // extract the JSON data from the template_data by the props key, and set that
+            // value as the "data" for the component. the component is effectively rendered
+            // in isolation and then the final result replaces the component tag. This can
+            // be recursively called for the nested component use case, but the nested template
+            // only has access to the data passed in from the parent
+            let conditional_data = match el.get_attribute("props") {
+                Some(props_attr) => get_json_value(data, &props_attr).unwrap_or_else(|| {
+                    panic!("Could not find component props data with key {props_attr}")
+                }),
+                None => data,
+            };
+            let processed_contents = replace_variables(contents.trim_end(), conditional_data);
+
+            el.replace(&processed_contents, ContentType::Html);
+            Ok(())
+        })],
+        ..RewriteStrSettings::new()
     };
-    let processed_contents = replace_variables(contents.trim_end(), conditional_data);
-
-    el.replace(&processed_contents, ContentType::Html);
-    Ok(())
-}
-
-fn remove_html_comments(
-    comment: &mut Comment,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    comment.remove();
-    Ok(())
+    // TODO: handle errors instead of falling back to empty template
+    rewrite_str(template, settings).unwrap_or_else(|_| template.to_string())
 }
 
 #[cfg(test)]
