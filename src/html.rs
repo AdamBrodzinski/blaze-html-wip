@@ -34,7 +34,7 @@ pub fn rewrite_each_tags(template: &str, data: &serde_json::Value) -> String {
                         }
                     }
 
-                    if tag_end_pos > 0 || (after_tag.chars().next() == Some('>')) {
+                    if tag_end_pos > 0 || after_tag.starts_with('>') {
                         // Extract the full opening tag to parse attributes
                         let opening_tag = &after_tag[..tag_end_pos];
 

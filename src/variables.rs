@@ -22,7 +22,7 @@ pub fn replace_variables(template: &str, data: &serde_json::Value) -> String {
             }
 
             // String type to satisfy match arms
-            let orig_var = || format!("@{}", key);
+            let orig_var = || format!("@{key}");
 
             if let Some(json_value) = get_json_value(data, &key) {
                 let value = match json_value {
