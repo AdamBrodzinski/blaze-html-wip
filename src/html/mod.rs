@@ -1,5 +1,11 @@
 use crate::variables::get_json_value;
 
+pub mod comments;
+pub mod component;
+
+pub use comments::rewrite_comments;
+pub use component::rewrite_component;
+
 pub fn rewrite_each_tags(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
     let mut remaining = template;
