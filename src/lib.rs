@@ -6,9 +6,6 @@
 //! ## Features
 //! - Variable replacement with context
 //!
-//! ## Todo
-//! - <each> block
-//! - <component name="foo" path="/src/templates/foo.html"> include html snippets
 //!
 // ## Example
 // ```rust
@@ -24,16 +21,24 @@ mod variables;
 use variables::{get_json_value, replace_variables};
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
+    let template_w_each = rewrite_each_tags(template);
+    println!("{template_w_each}");
     let template = rewrite_html(template, data);
     replace_variables(&template, data)
 }
 
+fn rewrite_each_tags(template: &str) -> String {
+    // todo, convert each here.
+    // the first iteration will not have any data passing in.
+    // it just needs to replace <each attrs...>Inner</each> with 'Inner'
+    String::new()
+}
+
 fn rewrite_html(template: &str, data: &serde_json::Value) -> String {
     let settings = RewriteStrSettings {
-        element_content_handlers: vec![
-            element!("component", |el| { handle_component_elements(el, data) }),
-            element!("each", |el| { handle_each_elements(el, data) }),
-        ],
+        element_content_handlers: vec![element!("component", |el| {
+            handle_component_elements(el, data)
+        })],
         document_content_handlers: vec![doc_comments!(remove_html_comments)],
         ..RewriteStrSettings::new()
     };
@@ -66,29 +71,6 @@ fn handle_component_elements(
     let processed_contents = replace_variables(contents.trim_end(), conditional_data);
 
     el.replace(&processed_contents, ContentType::Html);
-    Ok(())
-}
-
-fn handle_each_elements(
-    el: &mut Element,
-    data: &serde_json::Value,
-) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let inner_content = "Hello";
-
-    let items_key = el
-        .get_attribute("items")
-        .expect("Expected items to contain an 'items' attr");
-
-    let array = get_json_value(data, &items_key)
-        .unwrap_or_else(|| panic!("Could not find array data with key '{items_key}'"))
-        .as_array()
-        .unwrap_or_else(|| panic!("Data at key '{items_key}' is not an array"));
-
-    let array_length = array.len();
-
-    let repeated_content = inner_content.repeat(array_length);
-
-    el.replace(&repeated_content, ContentType::Html);
     Ok(())
 }
 
@@ -140,21 +122,32 @@ mod render_template_str_tests {
         render_template_str(tmpl, &data);
     }
 
+    // TODO this test will fail and needs the implementation feature added
     #[test]
-    fn each_block_basic_two_items_test() {
-        let tmpl = "List: <each items='list'>Hello</each>";
-        let data_1 = json!({"list": ["a", "b"]});
+    fn basic_each_replacement() {
+        let tmpl = "List: <each anything='foo'>Hello</each>";
+        let data_1 = json!(()); // no data needed yet
 
         let result1 = render_template_str(tmpl, &data_1);
-        assert_eq!(result1, "List: HelloHello");
+        assert_eq!(result1, "Hello");
     }
 
-    #[test]
-    fn each_block_basic_three_items_test() {
-        let tmpl = "List: <each items='list'>Hello</each>";
-        let data_2 = json!({"list": ["a", "b", "c"]});
-
-        let result2 = render_template_str(tmpl, &data_2);
-        assert_eq!(result2, "List: HelloHelloHello");
-    }
+    // ignore these for now, later we will pass data through
+    // #[test]
+    // fn each_block_basic_two_items_test() {
+    //     let tmpl = "List: <each items='list'>Hello</each>";
+    //     let data_1 = json!({"list": ["a", "b"]});
+    //
+    //     let result1 = render_template_str(tmpl, &data_1);
+    //     assert_eq!(result1, "List: HelloHello");
+    // }
+    //
+    // #[test]
+    // fn each_block_basic_three_items_test() {
+    //     let tmpl = "List: <each items='list'>Hello</each>";
+    //     let data_2 = json!({"list": ["a", "b", "c"]});
+    //
+    //     let result2 = render_template_str(tmpl, &data_2);
+    //     assert_eq!(result2, "List: HelloHelloHello");
+    // }
 }
