@@ -425,4 +425,22 @@ mod tests {
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "A-test B-test ");
     }
+
+    #[test]
+    fn each_objects_attr_as_defaults_to_item() {
+        let tmpl = r#"<each items="list">Name: @item.name, Age: @item.age</each>"#;
+        let data = json!({"list": [{"name": "Jane", "age": 33}] });
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Name: Jane, Age: 33");
+    }
+
+    #[test]
+    fn each_objects() {
+        let tmpl = r#"<each items="list" as="person">Name: @person.name, Age: @person.age</each>"#;
+        let data = json!({"list": [{"name": "Jane", "age": 33}] });
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Name: Jane, Age: 33");
+    }
 }
