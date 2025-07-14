@@ -77,10 +77,11 @@ pub fn rewrite_each(template: &str, data: &serde_json::Value) -> String {
                                         .as_array()
                                         .expect("items must reference an array");
 
-                                    // Repeat content for each item in array
-                                    if !array.is_empty() {
-                                        let repeated = content.repeat(array.len());
-                                        result.push_str(&repeated);
+                                    // Process content for each item in array
+                                    for item in array {
+                                        let processed_content =
+                                            replace_item_variable(content, item);
+                                        result.push_str(&processed_content);
                                     }
 
                                     remaining = &remaining[search_pos + 7..];
@@ -134,6 +135,53 @@ fn parse_items_attribute(tag_content: &str) -> Option<String> {
         }
     }
     None
+}
+
+fn replace_item_variable(content: &str, item_value: &serde_json::Value) -> String {
+    let mut result = String::with_capacity(content.len());
+    let mut chars = content.chars().peekable();
+    let mut last_char = ' ';
+
+    while let Some(c) = chars.next() {
+        if c == '@' && !last_char.is_ascii_alphanumeric() {
+            // Check if this is "@item"
+            let mut key = String::with_capacity(10);
+            let mut temp_chars = chars.clone();
+            while let Some(&next_c) = temp_chars.peek() {
+                if next_c.is_ascii_alphanumeric() || next_c == '_' {
+                    key.push(next_c);
+                    temp_chars.next();
+                } else {
+                    break;
+                }
+            }
+
+            if key == "item" {
+                // Replace @item with the item value
+                let item_str = match item_value {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Bool(b) => b.to_string(),
+                    serde_json::Value::Null => String::new(),
+                    serde_json::Value::Object(_) => "[Object]".to_string(),
+                    serde_json::Value::Array(_) => "[Array]".to_string(),
+                };
+                result.push_str(&item_str);
+                // Advance chars past "item"
+                for _ in 0..key.len() {
+                    chars.next();
+                }
+            } else {
+                // Not @item, keep the @ and continue
+                result.push(c);
+            }
+        } else {
+            result.push(c);
+        }
+        last_char = c;
+    }
+
+    result
 }
 
 #[cfg(test)]
@@ -286,5 +334,95 @@ mod tests {
 
         let result = render_template_str(tmpl, &data);
         assert_eq!(result, "HiHi");
+    }
+
+    #[test]
+    fn each_with_array_string_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": ["A", "B"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "AB");
+    }
+
+    #[test]
+    fn each_with_array_number_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": [1, 2, 3]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "123");
+    }
+
+    #[test]
+    fn each_with_array_boolean_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": [true, false]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "truefalse");
+    }
+
+    #[test]
+    fn each_with_array_mixed_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": ["A", 1, true, null]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "A1true");
+    }
+
+    #[test]
+    fn each_with_array_object_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": [{"name": "John"}, {"age": 30}]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "[Object][Object]");
+    }
+
+    #[test]
+    fn each_with_array_array_items() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": [[1, 2], ["a", "b"]]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "[Array][Array]");
+    }
+
+    #[test]
+    fn each_with_multiple_item_references() {
+        let tmpl = r#"<each items="list">Item: @item, "@item" </each>"#;
+        let data = json!({"list": ["A", "B"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Item: A, \"A\" Item: B, \"B\" ");
+    }
+
+    #[test]
+    fn each_without_item_reference() {
+        let tmpl = r#"<each items="list">Hello </each>"#;
+        let data = json!({"list": ["A", "B"]});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "Hello Hello ");
+    }
+
+    #[test]
+    fn each_item_shadows_data_key() {
+        let tmpl = r#"<each items="list">@item</each>"#;
+        let data = json!({"list": ["A", "B"], "item": "should be shadowed"});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "AB");
+    }
+
+    #[test]
+    fn each_item_with_other_variables() {
+        let tmpl = r#"<each items="list">@item-@name </each>"#;
+        let data = json!({"list": ["A", "B"], "name": "test"});
+
+        let result = render_template_str(tmpl, &data);
+        assert_eq!(result, "A-test B-test ");
     }
 }
