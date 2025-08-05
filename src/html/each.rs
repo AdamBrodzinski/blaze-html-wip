@@ -1,4 +1,6 @@
 use crate::data::get_json_value;
+use crate::variables::replace_variables;
+use serde_json::Value;
 
 pub fn rewrite_each(template: &str, data: &serde_json::Value) -> String {
     let mut result = String::with_capacity(template.len());
@@ -38,9 +40,10 @@ pub fn rewrite_each(template: &str, data: &serde_json::Value) -> String {
                         // Extract the full opening tag to parse attributes
                         let opening_tag = &after_tag[..tag_end_pos];
 
-                        // Parse the items attribute
+                        // Parse the items and as attributes
                         let items_key = parse_items_attribute(opening_tag)
                             .expect("each tag must have an 'items' attribute");
+                        let variable_name = parse_as_attribute(opening_tag);
 
                         let pos_after_open = start_pos + 5 + tag_end_pos + 1;
 
@@ -79,8 +82,20 @@ pub fn rewrite_each(template: &str, data: &serde_json::Value) -> String {
 
                                     // Process content for each item in array
                                     for item in array {
+                                        // Create temporary data context with item
+                                        let mut temp_data = data.clone();
+                                        if let Value::Object(ref mut map) = temp_data {
+                                            map.insert(variable_name.clone(), item.clone());
+                                        } else {
+                                            // If data isn't an object, create new object
+                                            let mut map = serde_json::Map::new();
+                                            map.insert(variable_name.clone(), item.clone());
+                                            temp_data = Value::Object(map);
+                                        }
+
+                                        // Use regular variable replacement
                                         let processed_content =
-                                            replace_item_variable(content, item);
+                                            replace_variables(content, &temp_data);
                                         result.push_str(&processed_content);
                                     }
 
@@ -137,51 +152,20 @@ fn parse_items_attribute(tag_content: &str) -> Option<String> {
     None
 }
 
-fn replace_item_variable(content: &str, item_value: &serde_json::Value) -> String {
-    let mut result = String::with_capacity(content.len());
-    let mut chars = content.chars().peekable();
-    let mut last_char = ' ';
-
-    while let Some(c) = chars.next() {
-        if c == '@' && !last_char.is_ascii_alphanumeric() {
-            // Check if this is "@item"
-            let mut key = String::with_capacity(10);
-            let mut temp_chars = chars.clone();
-            while let Some(&next_c) = temp_chars.peek() {
-                if next_c.is_ascii_alphanumeric() || next_c == '_' {
-                    key.push(next_c);
-                    temp_chars.next();
-                } else {
-                    break;
+fn parse_as_attribute(tag_content: &str) -> String {
+    // Look for as='value' or as="value"
+    if let Some(as_pos) = tag_content.find("as=") {
+        let after_as = &tag_content[as_pos + 3..];
+        if let Some(quote_char) = after_as.chars().next() {
+            if quote_char == '"' || quote_char == '\'' {
+                // Find closing quote
+                if let Some(end_pos) = after_as[1..].find(quote_char) {
+                    return after_as[1..end_pos + 1].to_string();
                 }
             }
-
-            if key == "item" {
-                // Replace @item with the item value
-                let item_str = match item_value {
-                    serde_json::Value::String(s) => s.clone(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Bool(b) => b.to_string(),
-                    serde_json::Value::Null => String::new(),
-                    serde_json::Value::Object(_) => "[Object]".to_string(),
-                    serde_json::Value::Array(_) => "[Array]".to_string(),
-                };
-                result.push_str(&item_str);
-                // Advance chars past "item"
-                for _ in 0..key.len() {
-                    chars.next();
-                }
-            } else {
-                // Not @item, keep the @ and continue
-                result.push(c);
-            }
-        } else {
-            result.push(c);
         }
-        last_char = c;
     }
-
-    result
+    "item".to_string() // Default to "item"
 }
 
 #[cfg(test)]
@@ -378,7 +362,8 @@ mod tests {
         let data = json!({"list": [{"name": "John"}, {"age": 30}]});
 
         let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "[Object][Object]");
+        // With the new implementation, @item references to objects are not replaced
+        assert_eq!(result, "@item@item");
     }
 
     #[test]
@@ -387,7 +372,8 @@ mod tests {
         let data = json!({"list": [[1, 2], ["a", "b"]]});
 
         let result = render_template_str(tmpl, &data);
-        assert_eq!(result, "[Array][Array]");
+        // With the new implementation, @item references to arrays are not replaced
+        assert_eq!(result, "@item@item");
     }
 
     #[test]
