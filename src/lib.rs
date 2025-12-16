@@ -16,6 +16,7 @@
 mod data;
 mod html;
 mod variables;
+mod variables_v2;
 use html::{rewrite_comments, rewrite_component, rewrite_each};
 use variables::replace_variables;
 
