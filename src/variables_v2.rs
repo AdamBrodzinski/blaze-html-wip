@@ -23,7 +23,7 @@ pub fn replace_variables(template_str: &str, data: &Value) -> Result<String, Str
             Part::Text(t) => output.push_str(t),
             // transform the serde Value into a String, keyed by the variable name
             Part::Var(var_name) => {
-                let json_value = get_json_value_v2(data, var_name).unwrap();
+                let json_value = get_json_value_v2(data, var_name)?;
                 let value = match json_value {
                     Value::String(x) => x.to_owned(),
                     Value::Bool(x) => x.to_string(),

@@ -30,15 +30,13 @@ pub fn get_json_value_v2<'a>(data: &'a Value, key: &str) -> Result<&'a Value, St
 
     for segment in key.split('.') {
         match current {
-            // check if current is an object
             Value::Object(map) => {
                 // current for the last segment should be a non object value
                 current = map
                     .get(segment)
-                    .ok_or_else(|| format!("Key '{}' not found in object", segment))?;
+                    .ok_or_else(|| format!("Key '{segment}' not found in object"))?;
             }
-            // if current is not an object return early with an error
-            _ => return Err(format!("Cannot access '{}' on non-object value", segment)),
+            _ => return Err(format!("Cannot access '{segment}' on non-object value")),
         }
     }
 
