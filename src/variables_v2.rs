@@ -24,15 +24,14 @@ pub fn replace_variables(template_str: &str, data: &Value) -> Result<String, Str
             // transform the serde Value into a String, keyed by the variable name
             Part::Var(var_name) => {
                 let json_value = get_json_value_v2(data, var_name)?;
+                // todo, maybe use if for more optimimizations?
                 let value = match json_value {
                     Value::String(x) => x.to_owned(),
                     Value::Bool(x) => x.to_string(),
                     Value::Number(x) => x.to_string(),
                     Value::Null => String::new(),
                     // get_json_value will return Err if the leaf value is of type Object/Array
-                    Value::Object(_) => String::from("TODO-object"),
-                    // todo
-                    Value::Array(_) => String::from("TODO-object"),
+                    Value::Object(_) | Value::Array(_) => String::new(),
                 };
                 output.push_str(&value)
             }
