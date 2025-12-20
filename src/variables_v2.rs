@@ -16,7 +16,7 @@ enum Part<'a> {
 
 pub fn replace_variables(template_str: &str, data: String) -> Result<String, String> {
     let (_, parts) = parse_template(template_str).map_err(|e| e.to_string())?;
-    let mut output = String::new();
+    let mut output = String::with_capacity(template_str.len());
 
     for part in parts {
         match part {
