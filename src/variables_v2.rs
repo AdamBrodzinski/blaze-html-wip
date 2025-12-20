@@ -77,42 +77,33 @@ mod tests {
 
     #[test]
     fn it_replaces_variables() {
-        // Arrange
         let data = json!({"name": "Jane", "age": "45"});
         let tmpl = "name: @name end";
-        // Act
         let result = replace_variables(tmpl, &data);
-        // Assert
         assert_eq!(result.unwrap(), "name: Jane end");
     }
 
-    // #[test]
-    // fn it_replaces_snake_case_variables() {
-    //     //let data = json!({"name": "Jane", "age": "45"});
-    //     let data = String::from("Jane");
-    //     let tmpl = "name: @first_name end";
-    //
-    //     let result = replace_variables(tmpl, data);
-    //     assert_eq!(result.unwrap(), "name: Jane end");
-    // }
-    //
-    // #[test]
-    // fn it_replaces_leading_number_variables() {
-    //     //let data = json!({"name": "Jane", "age": "45"});
-    //     let data = String::from("Jane");
-    //     let tmpl = "name: @2name end";
-    //
-    //     let result = replace_variables(tmpl, data);
-    //     assert_eq!(result.unwrap(), "name: Jane end");
-    // }
-    //
-    // #[test]
-    // fn it_replaces_nested_variables() {
-    //     //let data = json!({"name": "Jane", "age": "45"});
-    //     let data = String::from("Jane");
-    //     let tmpl = "@person.name end";
-    //
-    //     let result = replace_variables(tmpl, data);
-    //     assert_eq!(result.unwrap(), "Jane end");
-    // }
+    #[test]
+    fn it_replaces_snake_case_variables() {
+        let data = json!({"first_name": "Jane", "age": "45"});
+        let tmpl = "name: @first_name end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "name: Jane end");
+    }
+
+    #[test]
+    fn it_replaces_leading_number_variables() {
+        let data = json!({"2name": "Jane", "age": "45"});
+        let tmpl = "name: @2name end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "name: Jane end");
+    }
+
+    #[test]
+    fn it_replaces_nested_variables() {
+        let data = json!({"person": {"name": "Jane", "age": "45"}});
+        let tmpl = "@person.name end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Jane end");
+    }
 }
