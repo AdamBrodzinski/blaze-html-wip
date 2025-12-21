@@ -15,10 +15,13 @@
 
 mod data;
 mod html;
+mod template;
 mod variables;
 mod variables_v2;
 use html::{rewrite_comments, rewrite_component, rewrite_each};
 use variables::replace_variables;
+
+pub use template::BlazeTemplate;
 
 pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
     let template = rewrite_each(template, data);
