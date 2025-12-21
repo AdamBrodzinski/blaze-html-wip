@@ -102,4 +102,70 @@ mod tests {
         let result = replace_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Jane end");
     }
+
+    #[test]
+    fn it_renders_boolean() {
+        let data = json!({"active": true});
+        let tmpl = "Active: @active";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Active: true");
+    }
+
+    #[test]
+    fn it_renders_integer_number() {
+        let data = json!({"count": 42});
+        let tmpl = "Count: @count";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Count: 42");
+    }
+
+    #[test]
+    fn it_renders_float_number() {
+        let data = json!({"price": 19.99});
+        let tmpl = "Price: @price";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Price: 19.99");
+    }
+
+    #[test]
+    fn it_renders_null_as_empty_string() {
+        let data = json!({"value": null});
+        let tmpl = "Value: @value end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Value:  end");
+    }
+
+    #[test]
+    fn it_renders_object_as_empty_string() {
+        let data = json!({"user": {"name": "Jane", "age": 30}});
+        let tmpl = "User: @user end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "User:  end");
+    }
+
+    #[test]
+    fn it_renders_array_as_empty_string() {
+        let data = json!({"items": [1, 2, 3]});
+        let tmpl = "Items: @items end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Items:  end");
+    }
+
+    #[test]
+    fn it_renders_multiple_types_in_same_template() {
+        let data = json!({
+            "name": "Alice",
+            "age": 30,
+            "active": true,
+            "balance": 123.45,
+            "nickname": null
+        });
+        let tmpl =
+            "@name is @age years old, active: @active, balance: @balance, nickname: @nickname!";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "Alice is 30 years old, active: true, balance: 123.45, nickname: !"
+        );
+    }
 }
