@@ -34,7 +34,6 @@ pub fn replace_variables(template_str: &str, data: &Value) -> Result<String, Str
             }
         }
     }
-    dbg!(&output);
 
     Ok(output)
 }
