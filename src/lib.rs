@@ -15,6 +15,7 @@
 
 mod data;
 mod html;
+mod layout;
 mod template;
 mod variables;
 mod variables_v2;
