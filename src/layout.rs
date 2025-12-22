@@ -1,5 +1,6 @@
 #![allow(unused)]
-use nom::bytes::complete::take_till1;
+use nom::bytes::complete::{take_till1, take_until};
+use nom::sequence::delimited;
 use nom::Parser;
 use nom::{branch::alt, multi::many0};
 use nom::{bytes::complete::tag, sequence::preceded};
@@ -10,9 +11,12 @@ use crate::data::get_json_value_v2;
 
 #[derive(Debug)]
 enum Part<'a> {
-    ContentBefore(&'a str),
     Content(&'a str),
-    ContentAfter(&'a str),
+}
+
+struct LayoutContent<'a> {
+    start: &'a str,
+    end: &'a str,
 }
 
 /// Accept a template and only transform the <layout> section, leaving the inner contents
@@ -22,12 +26,30 @@ pub fn transform_layout(
     _data: &Value,
 ) -> Result<String, String> {
     let output = page_template_str.to_string();
+    let layout_content = layout_template_str.to_owned();
+    let (_input, layout_tag_inner) = extract_layout_content(page_template_str).unwrap();
+    dbg!(layout_tag_inner);
+    let (_, layout_content) = extract_layout_start_end(layout_content.as_str()).unwrap();
 
-    Ok(output.to_string())
+    Ok(format!(
+        "{}{}{}",
+        layout_content.start, layout_tag_inner, layout_content.end
+    ))
 }
 
-fn parse_layout(input: &str) -> IResult<&str, &str> {
-    todo!()
+/// extract text inside layout tags
+fn extract_layout_content(input: &str) -> IResult<&str, &str> {
+    delimited(tag("<layout>"), take_until("</layout>"), tag("</layout>")).parse(input)
+}
+
+fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
+    Ok((
+        input,
+        LayoutContent {
+            start: "START",
+            end: "END",
+        },
+    ))
 }
 
 /*
