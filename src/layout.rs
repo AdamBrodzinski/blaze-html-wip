@@ -99,4 +99,28 @@ mod tests {
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
+
+    #[test]
+    fn it_transforms_nested_layout() {
+        let data = json!(());
+        let page_tmpl = "<layout><div>Content</div></layout>";
+        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "<header>H</header><div>Content</div><footer>F</footer>"
+        );
+    }
+
+    #[test]
+    fn it_transforms_layout_with_outer_text() {
+        let data = json!(());
+        let page_tmpl = "before<layout><div>Content</div></layout>after";
+        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "before<header>H</header><div>Content</div><footer>F</footer>after"
+        );
+    }
 }
