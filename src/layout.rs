@@ -11,6 +11,7 @@ use nom::{bytes::complete::take_while1, IResult};
 use serde_json::Value;
 
 use crate::data::get_json_value_v2;
+use crate::parsers::parse_quoted_value;
 
 #[derive(Debug)]
 enum Part<'a> {
@@ -44,10 +45,10 @@ pub fn transform_layout(
     let layout_content = layout_template_str.to_owned();
     // find the <layout> tags and return text before tag, inside tags, after closing tag
     let (_, page_parts) = extract_page_parts(page_template_str)
-        .map_err(|e| format!("Failed to parse page template: {}", e))?;
+        .map_err(|e| format!("Failed to parse page template: {e}"))?;
     // load the layout and split content before and after <slot/> tag
     let (_, layout_content) = extract_layout_start_end(layout_content.as_str())
-        .map_err(|e| format!("Failed to parse layout template: {}", e))?;
+        .map_err(|e| format!("Failed to parse layout template: {e}"))?;
 
     Ok(format!(
         "{}{}{}{}{}",
@@ -57,15 +58,6 @@ pub fn transform_layout(
         layout_content.after_layout_slot,
         page_parts.after_layout_tag
     ))
-}
-
-/// Parse quoted attribute value (supports both single and double quotes)
-fn parse_quoted_value(input: &str) -> IResult<&str, &str> {
-    alt((
-        delimited(char('\''), take_till1(|c| c == '\''), char('\'')),
-        delimited(char('"'), take_till1(|c| c == '"'), char('"')),
-    ))
-    .parse(input)
 }
 
 /// Parse name='value' attribute and return LayoutIdentifier::Name
@@ -96,11 +88,6 @@ fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
     let (input, _) = space0(input)?;
     let (input, _) = char('>').parse(input)?;
     Ok((input, identifier))
-}
-
-/// extract text inside layout tags
-fn extract_layout_content(input: &str) -> IResult<&str, &str> {
-    delimited(tag("<layout>"), take_until("</layout>"), tag("</layout>")).parse(input)
 }
 
 /// Extract prefix, layout content, and suffix from page template
@@ -139,15 +126,7 @@ fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
 fn slot_tag(input: &str) -> IResult<&str, ()> {
     value(
         (),
-        (
-            char('<'),
-            space0,
-            tag("slot"),
-            space0,
-            char('/'),
-            space0,
-            char('>'),
-        ),
+        (char('<'), space0, tag("slot"), space0, char('/'), char('>')),
     )
     .parse(input)
 }
@@ -170,7 +149,7 @@ mod tests {
     fn it_transforms_layout_slot_tag_with_spaces() {
         let data = json!(());
         let page_tmpl = "<layout name='test'>Content</layout>";
-        let layout_tmpl = "Header <  slot   / > Footer";
+        let layout_tmpl = "Header <  slot   /> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
