@@ -17,6 +17,12 @@ enum Part<'a> {
     Content(&'a str),
 }
 
+#[derive(Debug)]
+enum LayoutIdentifier<'a> {
+    Name(&'a str),
+    Path(&'a str),
+}
+
 struct LayoutContent<'a> {
     before_layout_slot: &'a str,
     after_layout_slot: &'a str,
@@ -26,7 +32,7 @@ struct PageParts<'a> {
     before_layout_tag: &'a str,
     inside_layout_tag: &'a str,
     after_layout_tag: &'a str,
-    layout_name: &'a str,
+    layout_identifier: LayoutIdentifier<'a>,
 }
 
 /// Accept a template and only transform the <layout> section, leaving the inner contents
@@ -62,18 +68,34 @@ fn parse_quoted_value(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-/// Parse <layout name='value'> opening tag and extract the name attribute
-fn parse_layout_opening_tag(input: &str) -> IResult<&str, &str> {
-    let (input, _) = tag("<layout").parse(input)?;
-    let (input, _) = space1(input)?;
+/// Parse name='value' attribute and return LayoutIdentifier::Name
+fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     let (input, _) = tag("name").parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('=').parse(input)?;
     let (input, _) = space0(input)?;
-    let (input, name) = parse_quoted_value(input)?;
+    let (input, value) = parse_quoted_value(input)?;
+    Ok((input, LayoutIdentifier::Name(value)))
+}
+
+/// Parse path='value' attribute and return LayoutIdentifier::Path
+fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
+    let (input, _) = tag("path").parse(input)?;
+    let (input, _) = space0(input)?;
+    let (input, _) = char('=').parse(input)?;
+    let (input, _) = space0(input)?;
+    let (input, value) = parse_quoted_value(input)?;
+    Ok((input, LayoutIdentifier::Path(value)))
+}
+
+/// Parse <layout name='value'> or <layout path='value'> opening tag
+fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
+    let (input, _) = tag("<layout").parse(input)?;
+    let (input, _) = space1(input)?;
+    let (input, identifier) = alt((parse_name_attribute, parse_path_attribute)).parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('>').parse(input)?;
-    Ok((input, name))
+    Ok((input, identifier))
 }
 
 /// extract text inside layout tags
@@ -84,7 +106,7 @@ fn extract_layout_content(input: &str) -> IResult<&str, &str> {
 /// Extract prefix, layout content, and suffix from page template
 fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
     let (input, before) = take_until("<layout").parse(input)?;
-    let (input, layout_name) = parse_layout_opening_tag(input)?;
+    let (input, layout_identifier) = parse_layout_opening_tag(input)?;
     let (input, inner) = take_until("</layout>").parse(input)?;
     let (input, _) = tag("</layout>").parse(input)?;
     let (input, after) = rest(input)?;
@@ -95,7 +117,7 @@ fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
             before_layout_tag: before,
             inside_layout_tag: inner,
             after_layout_tag: after,
-            layout_name,
+            layout_identifier,
         },
     ))
 }
@@ -220,5 +242,32 @@ mod tests {
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
+    }
+
+    #[test]
+    fn it_parses_layout_path_attribute() {
+        let data = json!(());
+        let page_tmpl = "<layout path='layouts/main.html'>Content</layout>";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "Header Content Footer");
+    }
+
+    #[test]
+    fn it_parses_layout_path_with_double_quotes() {
+        let data = json!(());
+        let page_tmpl = "<layout path=\"layouts/main.html\">Content</layout>";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "Header Content Footer");
+    }
+
+    #[test]
+    fn it_errors_when_both_name_and_path_are_present() {
+        let data = json!(());
+        let page_tmpl = "<layout name='foo' path='bar'>Content</layout>";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert!(result.is_err());
     }
 }
