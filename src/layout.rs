@@ -36,14 +36,14 @@ struct PageParts<'a> {
     layout_identifier: LayoutIdentifier<'a>,
 }
 
-/// Accept a template and only transform the <layout> section, leaving the inner contents
+/// Accept a template and only transform the <Layout> section, leaving the inner contents
 pub fn transform_layout(
     page_template_str: &str,
     layout_template_str: &str,
     _data: &Value,
 ) -> Result<String, String> {
     let layout_content = layout_template_str.to_owned();
-    // find the <layout> tags and return text before tag, inside tags, after closing tag
+    // find the <Layout> tags and return text before tag, inside tags, after closing tag
     let (_, page_parts) = extract_page_parts(page_template_str)
         .map_err(|e| format!("Failed to parse page template: {e}"))?;
     // load the layout and split content before and after <slot/> tag
@@ -80,9 +80,9 @@ fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, LayoutIdentifier::Path(value)))
 }
 
-/// Parse <layout name='value'> or <layout path='value'> opening tag
+/// Parse <Layout name='value'> or <Layout path='value'> opening tag
 fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
-    let (input, _) = tag("<layout").parse(input)?;
+    let (input, _) = tag("<Layout").parse(input)?;
     let (input, _) = space1(input)?;
     let (input, identifier) = alt((parse_name_attribute, parse_path_attribute)).parse(input)?;
     let (input, _) = space0(input)?;
@@ -92,10 +92,10 @@ fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
 
 /// Extract prefix, layout content, and suffix from page template
 fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
-    let (input, before) = take_until("<layout").parse(input)?;
+    let (input, before) = take_until("<Layout").parse(input)?;
     let (input, layout_identifier) = parse_layout_opening_tag(input)?;
-    let (input, inner) = take_until("</layout>").parse(input)?;
-    let (input, _) = tag("</layout>").parse(input)?;
+    let (input, inner) = take_until("</Layout>").parse(input)?;
+    let (input, _) = tag("</Layout>").parse(input)?;
     let (input, after) = rest(input)?;
 
     Ok((
@@ -139,7 +139,7 @@ mod tests {
     #[test]
     fn it_transforms_simple_layout() {
         let data = json!(());
-        let page_tmpl = "<layout name='test'>Content</layout>";
+        let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <slot /> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn it_transforms_layout_slot_tag_with_spaces() {
         let data = json!(());
-        let page_tmpl = "<layout name='test'>Content</layout>";
+        let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <  slot   /> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -157,7 +157,7 @@ mod tests {
     #[test]
     fn it_transforms_layout_slot_tag_with_no_spaces() {
         let data = json!(());
-        let page_tmpl = "<layout name='test'>Content</layout>";
+        let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -166,7 +166,7 @@ mod tests {
     #[test]
     fn it_transforms_nested_layout() {
         let data = json!(());
-        let page_tmpl = "<layout name='test'><div>Content</div></layout>";
+        let page_tmpl = "<Layout name='test'><div>Content</div></Layout>";
         let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(
@@ -178,7 +178,7 @@ mod tests {
     #[test]
     fn it_transforms_layout_with_outer_text() {
         let data = json!(());
-        let page_tmpl = "before<layout name='test'><div>Content</div></layout>after";
+        let page_tmpl = "before<Layout name='test'><div>Content</div></Layout>after";
         let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(
@@ -190,7 +190,7 @@ mod tests {
     #[test]
     fn it_loads_layout_template() {
         let data = json!(());
-        let page_tmpl = "<layout name='foo'>Content</layout>";
+        let page_tmpl = "<Layout name='foo'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -199,7 +199,7 @@ mod tests {
     #[test]
     fn it_parses_layout_name_with_double_quotes() {
         let data = json!(());
-        let page_tmpl = "<layout name=\"bar\">Content</layout>";
+        let page_tmpl = "<Layout name=\"bar\">Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -208,7 +208,7 @@ mod tests {
     #[test]
     fn it_errors_when_name_attribute_is_missing() {
         let data = json!(());
-        let page_tmpl = "<layout>Content</layout>";
+        let page_tmpl = "<Layout>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert!(result.is_err());
@@ -217,7 +217,7 @@ mod tests {
     #[test]
     fn it_parses_layout_name_with_spaces_around_equals() {
         let data = json!(());
-        let page_tmpl = "<layout name = 'baz'>Content</layout>";
+        let page_tmpl = "<Layout name = 'baz'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -226,7 +226,7 @@ mod tests {
     #[test]
     fn it_parses_layout_path_attribute() {
         let data = json!(());
-        let page_tmpl = "<layout path='layouts/main.html'>Content</layout>";
+        let page_tmpl = "<Layout path='layouts/main.html'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -235,7 +235,7 @@ mod tests {
     #[test]
     fn it_parses_layout_path_with_double_quotes() {
         let data = json!(());
-        let page_tmpl = "<layout path=\"layouts/main.html\">Content</layout>";
+        let page_tmpl = "<Layout path=\"layouts/main.html\">Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
@@ -244,7 +244,7 @@ mod tests {
     #[test]
     fn it_errors_when_both_name_and_path_are_present() {
         let data = json!(());
-        let page_tmpl = "<layout name='foo' path='bar'>Content</layout>";
+        let page_tmpl = "<Layout name='foo' path='bar'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert!(result.is_err());
