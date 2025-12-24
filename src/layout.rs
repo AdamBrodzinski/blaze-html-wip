@@ -18,8 +18,14 @@ enum Part<'a> {
 }
 
 struct LayoutContent<'a> {
-    start: &'a str,
-    end: &'a str,
+    before_layout_slot: &'a str,
+    after_layout_slot: &'a str,
+}
+
+struct PageParts<'a> {
+    before_layout_tag: &'a str,
+    inside_layout_tag: &'a str,
+    after_layout_tag: &'a str,
 }
 
 /// Accept a template and only transform the <layout> section, leaving the inner contents
@@ -28,14 +34,19 @@ pub fn transform_layout(
     layout_template_str: &str,
     _data: &Value,
 ) -> Result<String, String> {
-    let output = page_template_str.to_string();
     let layout_content = layout_template_str.to_owned();
-    let (_input, layout_tag_inner) = extract_layout_content(page_template_str).unwrap();
+    // find the <layout> tags and return text before tag, inside tags, after closing tag
+    let (_, page_parts) = extract_page_parts(page_template_str).unwrap();
+    // load the layout and split content before and after <slot/> tag
     let (_, layout_content) = extract_layout_start_end(layout_content.as_str()).unwrap();
 
     Ok(format!(
-        "{}{}{}",
-        layout_content.start, layout_tag_inner, layout_content.end
+        "{}{}{}{}{}",
+        page_parts.before_layout_tag,
+        layout_content.before_layout_slot,
+        page_parts.inside_layout_tag,
+        layout_content.after_layout_slot,
+        page_parts.after_layout_tag
     ))
 }
 
@@ -44,12 +55,36 @@ fn extract_layout_content(input: &str) -> IResult<&str, &str> {
     delimited(tag("<layout>"), take_until("</layout>"), tag("</layout>")).parse(input)
 }
 
+/// Extract prefix, layout content, and suffix from page template
+fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
+    let (input, before) = take_until("<layout>").parse(input)?;
+    let (input, _) = tag("<layout>").parse(input)?;
+    let (input, inner) = take_until("</layout>").parse(input)?;
+    let (input, _) = tag("</layout>").parse(input)?;
+    let (input, after) = rest(input)?;
+
+    Ok((
+        input,
+        PageParts {
+            before_layout_tag: before,
+            inside_layout_tag: inner,
+            after_layout_tag: after,
+        },
+    ))
+}
+
 fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
     // everything up to (not including) where slot_tag starts
     let (input, start) = recognize(many_till(anychar, peek(slot_tag))).parse(input)?;
     let (input, _) = slot_tag(input)?;
     let (input, end) = rest(input)?;
-    Ok((input, LayoutContent { start, end }))
+    Ok((
+        input,
+        LayoutContent {
+            before_layout_slot: start,
+            after_layout_slot: end,
+        },
+    ))
 }
 
 fn slot_tag(input: &str) -> IResult<&str, ()> {
@@ -122,5 +157,14 @@ mod tests {
             result.unwrap(),
             "before<header>H</header><div>Content</div><footer>F</footer>after"
         );
+    }
+
+    #[test]
+    fn it_loads_layout_template() {
+        let data = json!(());
+        let page_tmpl = "<layout name='foo'>Content</layout>";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "Header Content Footer");
     }
 }
