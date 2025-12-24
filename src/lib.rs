@@ -14,20 +14,9 @@
 // ```
 
 mod data;
-mod html;
 mod layout;
 mod parsers;
 mod template;
 mod variables;
-mod variables_v2;
-use html::{rewrite_comments, rewrite_component, rewrite_each};
-use variables::replace_variables;
 
 pub use template::BlazeTemplate;
-
-pub fn render_template_str(template: &str, data: &serde_json::Value) -> String {
-    let template = rewrite_each(template, data);
-    let template = rewrite_component(&template, data);
-    let template = rewrite_comments(&template);
-    replace_variables(&template, data)
-}

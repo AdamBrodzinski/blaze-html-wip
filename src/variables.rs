@@ -1,58 +1,68 @@
+#![allow(unused)]
+use nom::bytes::complete::take_till1;
+use nom::Parser;
+use nom::{branch::alt, multi::many0};
+use nom::{bytes::complete::tag, sequence::preceded};
+use nom::{bytes::complete::take_while1, IResult};
 use serde_json::Value;
 
 use crate::data::get_json_value;
 
-/// replaces any variables with the syntax "name: @name" with the value from Json({"name": "Jane"})
-/// with the result "name: Jane". Nested object values can be used with "@person.name.first"
-pub fn replace_variables(template: &str, data: &serde_json::Value) -> String {
-    let mut result = String::with_capacity(template.len());
-    let mut chars = template.chars().peekable();
-    let mut last_char = ' ';
+#[derive(Debug)]
+enum Part<'a> {
+    Text(&'a str),
+    Var(&'a str),
+}
 
-    // iterate over the template once, and buildup a new output (String)
-    while let Some(c) = chars.next() {
-        if c == '@' && !last_char.is_ascii_alphanumeric() {
-            // parse the @foo to get the json key name "foo"
-            let mut key = String::with_capacity(10);
-            while let Some(&next_c) = chars.peek() {
-                if next_c.is_ascii_alphanumeric() || next_c == '_' || next_c == '.' {
-                    key.push(next_c);
-                    chars.next();
-                } else {
-                    break;
+pub fn replace_variables(template_str: &str, data: &Value) -> Result<String, String> {
+    let (_, parts) = parse_template(template_str).map_err(|e| e.to_string())?;
+    let mut output = String::with_capacity(template_str.len());
+
+    for part in parts {
+        match part {
+            Part::Text(t) => output.push_str(t),
+            // transform the serde Value into a String, keyed by the variable name
+            Part::Var(var_name) => {
+                let json_value = get_json_value(data, var_name)?;
+                match json_value {
+                    Value::String(x) => output.push_str(x),
+                    Value::Bool(x) => output.push_str(&x.to_string()),
+                    Value::Number(x) => output.push_str(&x.to_string()),
+                    Value::Null => {}
+                    Value::Object(_) | Value::Array(_) => {}
                 }
             }
-
-            // String type to satisfy match arms
-            let orig_var = || format!("@{key}");
-
-            if let Some(json_value) = get_json_value(data, &key) {
-                let value = match json_value {
-                    Value::String(x) => x.to_owned(),
-                    Value::Bool(x) => x.to_string(),
-                    Value::Number(x) => x.to_string(),
-                    Value::Null => String::new(),
-                    // trying to access the entire object and using that as a template
-                    // value will not work, render noop instead
-                    Value::Object(_) => orig_var(),
-                    // todo
-                    Value::Array(_) => orig_var(),
-                };
-                result.push_str(&value)
-            }
-            // if data was not found with key, retain the original "@foo"
-            else {
-                result.push_str(orig_var().as_str());
-            }
         }
-        // normal character, add it to the result string
-        else {
-            result.push(c);
-        }
-        last_char = c;
     }
 
-    result
+    Ok(output)
+}
+
+// ---------------------- variable ----------------------
+
+/// a valid variable name (after @)
+fn variable_key(input: &str) -> IResult<&str, &str> {
+    take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '.').parse(input)
+}
+
+/// parse the entire variable @foo and return the variable name foo
+fn variable(input: &str) -> IResult<&str, Part> {
+    // preceeded matches the @ + var_name then discards @ tag
+    let (input, name) = preceded(tag("@"), variable_key).parse(input)?;
+    Ok((input, Part::Var(name)))
+}
+
+// ---------------------- text ----------------------
+
+fn text(input: &str) -> IResult<&str, Part> {
+    let (input, txt) = take_till1(|c| c == '@').parse(input)?;
+    Ok((input, Part::Text(txt)))
+}
+
+// ---------------------- template ----------------------
+
+fn parse_template(input: &str) -> IResult<&str, Vec<Part>> {
+    many0(alt((variable, text))).parse(input)
 }
 
 #[cfg(test)]
@@ -61,76 +71,100 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn it_replaces_two_variables() {
+    fn it_replaces_variables() {
         let data = json!({"name": "Jane", "age": "45"});
-        let tmpl = "name: @name, age: @age";
-
+        let tmpl = "name: @name end";
         let result = replace_variables(tmpl, &data);
-        assert_eq!(result, "name: Jane, age: 45");
+        assert_eq!(result.unwrap(), "name: Jane end");
     }
 
     #[test]
-    fn it_serializes_booleans() {
-        let tmpl = "state: @is_open & is_on: false";
-        let data = json!({"is_open": true, "is_on": false});
-
+    fn it_replaces_snake_case_variables() {
+        let data = json!({"first_name": "Jane", "age": "45"});
+        let tmpl = "name: @first_name end";
         let result = replace_variables(tmpl, &data);
-        assert_eq!(result, "state: true & is_on: false");
+        assert_eq!(result.unwrap(), "name: Jane end");
     }
 
     #[test]
-    fn it_serializes_number() {
-        let tmpl = "@a, @b, @c, @d";
-        let data = json!({"a": 1, "b": 2.0, "c": -3, "d": 0.44});
-
+    fn it_replaces_leading_number_variables() {
+        let data = json!({"2name": "Jane", "age": "45"});
+        let tmpl = "name: @2name end";
         let result = replace_variables(tmpl, &data);
-
-        assert_eq!(result, "1, 2.0, -3, 0.44");
+        assert_eq!(result.unwrap(), "name: Jane end");
     }
 
     #[test]
-    fn it_serializes_nul_as_empty_str() {
-        let tmpl = "name: @name";
-        let data = json!({"name": null});
-
+    fn it_replaces_nested_variables() {
+        let data = json!({"person": {"name": "Jane", "age": "45"}});
+        let tmpl = "@person.name end";
         let result = replace_variables(tmpl, &data);
-
-        assert_eq!(result, "name: ");
+        assert_eq!(result.unwrap(), "Jane end");
     }
 
     #[test]
-    fn it_noops_when_data_key_is_not_found() {
-        let tmpl = "name: @name";
-        let data = json!({"never": "matches"});
-
+    fn it_renders_boolean() {
+        let data = json!({"active": true});
+        let tmpl = "Active: @active";
         let result = replace_variables(tmpl, &data);
-
-        assert_eq!(result, "name: @name");
+        assert_eq!(result.unwrap(), "Active: true");
     }
 
     #[test]
-    fn does_not_transform_emails() {
-        let tmpl = "foo@bar baz";
-        let data = json!({ "bar": "Jane" });
+    fn it_renders_integer_number() {
+        let data = json!({"count": 42});
+        let tmpl = "Count: @count";
         let result = replace_variables(tmpl, &data);
-        assert_eq!(result, "foo@bar baz");
-    }
-
-    // ----------- nested fields -----------
-
-    #[test]
-    fn it_returns_nested_fields() {
-        let tmpl = "name: @person.name";
-        let data = json!({ "person": { "name": "Jane" } });
-        let result = replace_variables(tmpl, &data);
-        assert_eq!(result, "name: Jane");
+        assert_eq!(result.unwrap(), "Count: 42");
     }
 
     #[test]
-    fn it_returns_deeply_nested_fields() {
-        let tmpl = "name: @a.b.c";
-        let data = json!({ "a": { "b": {"c": "foo"} } });
+    fn it_renders_float_number() {
+        let data = json!({"price": 19.99});
+        let tmpl = "Price: @price";
         let result = replace_variables(tmpl, &data);
-        assert_eq!(result, "name: foo");
+        assert_eq!(result.unwrap(), "Price: 19.99");
+    }
+
+    #[test]
+    fn it_renders_null_as_empty_string() {
+        let data = json!({"value": null});
+        let tmpl = "Value: @value end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Value:  end");
+    }
+
+    #[test]
+    fn it_renders_object_as_empty_string() {
+        let data = json!({"user": {"name": "Jane", "age": 30}});
+        let tmpl = "User: @user end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "User:  end");
+    }
+
+    #[test]
+    fn it_renders_array_as_empty_string() {
+        let data = json!({"items": [1, 2, 3]});
+        let tmpl = "Items: @items end";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Items:  end");
+    }
+
+    #[test]
+    fn it_renders_multiple_types_in_same_template() {
+        let data = json!({
+            "name": "Alice",
+            "age": 30,
+            "active": true,
+            "balance": 123.45,
+            "nickname": null
+        });
+        let tmpl =
+            "@name is @age years old, active: @active, balance: @balance, nickname: @nickname!";
+        let result = replace_variables(tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "Alice is 30 years old, active: true, balance: 123.45, nickname: !"
+        );
     }
 }

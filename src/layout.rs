@@ -10,7 +10,7 @@ use nom::{bytes::complete::tag, character, sequence::preceded};
 use nom::{bytes::complete::take_while1, IResult};
 use serde_json::Value;
 
-use crate::data::get_json_value_v2;
+use crate::data::get_json_value;
 use crate::parsers::parse_quoted_value;
 
 #[derive(Debug)]
