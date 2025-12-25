@@ -13,6 +13,7 @@
 // do_foo();
 // ```
 
+mod build_template;
 mod data;
 mod layout;
 mod parsers;

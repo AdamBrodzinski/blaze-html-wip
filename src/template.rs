@@ -1,5 +1,10 @@
+use std::path::PathBuf;
+
 use serde_json::Value;
 
+use crate::build_template::build_template;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlazeTemplate {
     absolute_project_path: String,
     components_dir: String,
@@ -46,15 +51,12 @@ impl BlazeTemplate {
         self
     }
 
-    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> String {
-        let template_path = format!(
-            "{}/{}/{}",
-            self.absolute_project_path, self.pages_dir, rel_page_path
-        );
-        dbg!(&template_path);
-
-        let template_file = std::fs::read_to_string(template_path).unwrap();
-        template_file
+    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
+        let template_path: PathBuf = [&self.absolute_project_path, &self.pages_dir, rel_page_path]
+            .iter()
+            .collect();
+        let template_file = std::fs::read_to_string(template_path).map_err(|e| e.to_string())?;
+        build_template(self, &template_file)
     }
 }
 
@@ -97,10 +99,10 @@ mod tests {
     }
 
     #[test]
-    fn renders_static_html_without_template() {
+    fn fetches_template_and_passes_to_build() {
         let blaze = BlazeTemplate::new().register_pages_directory("test_files");
         let data = json!(());
-        let result = blaze.render_page(data, "pages/static.html");
+        let result = blaze.render_page(data, "pages/static.html").unwrap();
         assert_eq!(result, "<div>Hello World</div>\n");
     }
 }
