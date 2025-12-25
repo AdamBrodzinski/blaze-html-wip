@@ -6,38 +6,24 @@ use crate::build_template::build_template;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BlazeTemplate {
-    absolute_project_path: String,
-    components_dir: String,
     dev: bool,
-    layouts_dir: String,
-    pages_dir: String,
     panic_on_error: bool,
+    project_path: String,
+    root_dir: String,
 }
 
 impl BlazeTemplate {
     pub fn new() -> Self {
         Self {
-            absolute_project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             dev: false,
-            components_dir: "src/components".to_string(),
-            layouts_dir: "src/layouts".to_string(),
-            pages_dir: "src/pages".to_string(),
             panic_on_error: false,
+            project_path: env!("CARGO_MANIFEST_DIR").to_string(),
+            root_dir: "src".to_string(),
         }
     }
 
-    pub fn register_components_directory(mut self, dir: &str) -> Self {
-        self.components_dir = dir.to_string();
-        self
-    }
-
-    pub fn register_layouts_directory(mut self, dir: &str) -> Self {
-        self.layouts_dir = dir.to_string();
-        self
-    }
-
-    pub fn register_pages_directory(mut self, dir: &str) -> Self {
-        self.pages_dir = dir.to_string();
+    pub fn set_root_directory(mut self, path: &str) -> Self {
+        self.root_dir = path.to_string();
         self
     }
 
@@ -52,7 +38,7 @@ impl BlazeTemplate {
     }
 
     pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
-        let template_path: PathBuf = [&self.absolute_project_path, &self.pages_dir, rel_page_path]
+        let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
             .iter()
             .collect();
         let template_file = std::fs::read_to_string(template_path).map_err(|e| e.to_string())?;
@@ -75,9 +61,7 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        assert_eq!(blaze.components_dir, "src/components");
-        assert_eq!(blaze.layouts_dir, "src/layouts");
-        assert_eq!(blaze.pages_dir, "src/pages");
+        assert_eq!(blaze.root_dir, "src");
         assert_eq!(blaze.dev, false);
         assert_eq!(blaze.panic_on_error, false);
     }
@@ -85,22 +69,18 @@ mod tests {
     #[test]
     fn test_builder_pattern() {
         let blaze = BlazeTemplate::new()
-            .register_components_directory("custom/components")
-            .register_layouts_directory("custom/layouts")
-            .register_pages_directory("custom/pages")
+            .set_root_directory("customer/pages")
             .enable_dev(true)
             .panic_on_error(true);
 
-        assert_eq!(blaze.components_dir, "custom/components");
-        assert_eq!(blaze.layouts_dir, "custom/layouts");
-        assert_eq!(blaze.pages_dir, "custom/pages");
+        assert_eq!(blaze.root_dir, "customer/pages");
         assert_eq!(blaze.dev, true);
         assert_eq!(blaze.panic_on_error, true);
     }
 
     #[test]
     fn fetches_template_and_passes_to_build() {
-        let blaze = BlazeTemplate::new().register_pages_directory("test_files");
+        let blaze = BlazeTemplate::new().set_root_directory("test_files");
         let data = json!(());
         let result = blaze.render_page(data, "pages/static.html").unwrap();
         assert_eq!(result, "<div>Hello World</div>\n");
