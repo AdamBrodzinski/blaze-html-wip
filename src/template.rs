@@ -3,6 +3,7 @@ use serde_json::Value;
 pub struct BlazeTemplate {
     absolute_project_path: String,
     components_dir: String,
+    dev: bool,
     layouts_dir: String,
     pages_dir: String,
     panic_on_error: bool,
@@ -12,6 +13,7 @@ impl BlazeTemplate {
     pub fn new() -> Self {
         Self {
             absolute_project_path: env!("CARGO_MANIFEST_DIR").to_string(),
+            dev: false,
             components_dir: "src/components".to_string(),
             layouts_dir: "src/layouts".to_string(),
             pages_dir: "src/pages".to_string(),
@@ -39,6 +41,11 @@ impl BlazeTemplate {
         self
     }
 
+    pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
+        self.dev = dev_enabled;
+        self
+    }
+
     pub fn render_page(&self, _data: Value, rel_page_path: &str) -> String {
         let template_path = format!(
             "{}/{}/{}",
@@ -57,6 +64,7 @@ impl Default for BlazeTemplate {
     }
 }
 
+#[allow(clippy::bool_assert_comparison)]
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,7 +76,8 @@ mod tests {
         assert_eq!(blaze.components_dir, "src/components");
         assert_eq!(blaze.layouts_dir, "src/layouts");
         assert_eq!(blaze.pages_dir, "src/pages");
-        assert!(!blaze.panic_on_error);
+        assert_eq!(blaze.dev, false);
+        assert_eq!(blaze.panic_on_error, false);
     }
 
     #[test]
@@ -77,12 +86,14 @@ mod tests {
             .register_components_directory("custom/components")
             .register_layouts_directory("custom/layouts")
             .register_pages_directory("custom/pages")
+            .enable_dev(true)
             .panic_on_error(true);
 
         assert_eq!(blaze.components_dir, "custom/components");
         assert_eq!(blaze.layouts_dir, "custom/layouts");
         assert_eq!(blaze.pages_dir, "custom/pages");
-        assert!(blaze.panic_on_error);
+        assert_eq!(blaze.dev, true);
+        assert_eq!(blaze.panic_on_error, true);
     }
 
     #[test]
