@@ -48,30 +48,37 @@ impl BlazeTemplate {
         self
     }
 
-    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        if self.cache_file_read {
-            // Check cache first with read lock (no allocation for lookup)
-            if let Ok(cache) = self.file_cache.read() {
-                if let Some(content) = cache.get(rel_page_path) {
-                    return Ok(content.clone());
-                }
-            }
+    fn get_template_path(&self, rel_page_path: &str) -> PathBuf {
+        [&self.project_path, &self.root_dir, rel_page_path]
+            .iter()
+            .collect()
+    }
 
-            // Read from disk and insert into cache
-            let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
-                .iter()
-                .collect();
-            let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
-            if let Ok(mut cache) = self.file_cache.write() {
-                cache.insert(rel_page_path.to_string(), content.clone());
+    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
+        let use_cache = self.cache_file_read && !self.dev;
+
+        if use_cache {
+            let cache = self
+                .file_cache
+                .read()
+                .map_err(|e| format!("Cache read lock poisoned: {e}"))?;
+            if let Some(content) = cache.get(rel_page_path) {
+                return Ok(content.clone());
             }
-            Ok(content)
-        } else {
-            let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
-                .iter()
-                .collect();
-            std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
         }
+
+        let template_path = self.get_template_path(rel_page_path);
+        let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
+
+        if use_cache {
+            self.file_cache
+                .write()
+                .map_err(|e| format!("Cache write lock poisoned: {e}"))?
+                .entry(rel_page_path.to_string())
+                .or_insert(content.clone());
+        }
+
+        Ok(content)
     }
 
     pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
