@@ -1,15 +1,19 @@
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Arc, RwLock};
 
 use serde_json::Value;
 
 use crate::build_template::build_template;
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone)]
 pub struct BlazeTemplate {
     dev: bool,
     panic_on_error: bool,
     project_path: String,
     root_dir: String,
+    cache_file_read: bool,
+    file_cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
 impl BlazeTemplate {
@@ -19,6 +23,8 @@ impl BlazeTemplate {
             panic_on_error: false,
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
+            cache_file_read: true,
+            file_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 
@@ -37,11 +43,38 @@ impl BlazeTemplate {
         self
     }
 
-    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
+    pub fn cache_file_read(mut self, enabled: bool) -> Self {
+        self.cache_file_read = enabled;
+        self
+    }
+
+    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
         let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
             .iter()
             .collect();
-        let template_file = std::fs::read_to_string(template_path).map_err(|e| e.to_string())?;
+        let cache_key = template_path.to_string_lossy().to_string();
+
+        if self.cache_file_read {
+            // Check cache first with read lock
+            if let Ok(cache) = self.file_cache.read() {
+                if let Some(content) = cache.get(&cache_key) {
+                    return Ok(content.clone());
+                }
+            }
+
+            // Read from disk and insert into cache
+            let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
+            if let Ok(mut cache) = self.file_cache.write() {
+                cache.insert(cache_key, content.clone());
+            }
+            Ok(content)
+        } else {
+            std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
+        }
+    }
+
+    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
+        let template_file = self.read_template(rel_page_path)?;
         build_template(self, &template_file)
     }
 }
