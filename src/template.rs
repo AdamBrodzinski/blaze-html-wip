@@ -49,26 +49,27 @@ impl BlazeTemplate {
     }
 
     fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
-            .iter()
-            .collect();
-        let cache_key = template_path.to_string_lossy().to_string();
-
         if self.cache_file_read {
-            // Check cache first with read lock
+            // Check cache first with read lock (no allocation for lookup)
             if let Ok(cache) = self.file_cache.read() {
-                if let Some(content) = cache.get(&cache_key) {
+                if let Some(content) = cache.get(rel_page_path) {
                     return Ok(content.clone());
                 }
             }
 
             // Read from disk and insert into cache
+            let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
+                .iter()
+                .collect();
             let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
             if let Ok(mut cache) = self.file_cache.write() {
-                cache.insert(cache_key, content.clone());
+                cache.insert(rel_page_path.to_string(), content.clone());
             }
             Ok(content)
         } else {
+            let template_path: PathBuf = [&self.project_path, &self.root_dir, rel_page_path]
+                .iter()
+                .collect();
             std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
         }
     }
