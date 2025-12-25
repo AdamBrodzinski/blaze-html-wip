@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 pub struct BlazeTemplate {
+    absolute_project_path: String,
     components_dir: String,
     layouts_dir: String,
     pages_dir: String,
@@ -10,6 +11,7 @@ pub struct BlazeTemplate {
 impl BlazeTemplate {
     pub fn new() -> Self {
         Self {
+            absolute_project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             components_dir: "src/components".to_string(),
             layouts_dir: "src/layouts".to_string(),
             pages_dir: "src/pages".to_string(),
@@ -37,8 +39,15 @@ impl BlazeTemplate {
         self
     }
 
-    pub fn render_page(&self, _data: Value, _page: &str) -> String {
-        "TODO".to_string()
+    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> String {
+        let template_path = format!(
+            "{}/{}/{}",
+            self.absolute_project_path, self.pages_dir, rel_page_path
+        );
+        dbg!(&template_path);
+
+        let template_file = std::fs::read_to_string(template_path).unwrap();
+        template_file
     }
 }
 
@@ -77,10 +86,10 @@ mod tests {
     }
 
     #[test]
-    fn test_render_page_returns_todo() {
-        let blaze = BlazeTemplate::new();
-        let data = json!({"title": "Home"});
-        let result = blaze.render_page(data, "customers/view.html");
-        assert_eq!(result, "TODO");
+    fn renders_static_html_without_template() {
+        let blaze = BlazeTemplate::new().register_pages_directory("test_files");
+        let data = json!(());
+        let result = blaze.render_page(data, "pages/static.html");
+        assert_eq!(result, "<div>Hello World</div>\n");
     }
 }
