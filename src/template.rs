@@ -42,6 +42,12 @@ impl BlazeTemplate {
     }
 }
 
+impl Default for BlazeTemplate {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -53,7 +59,7 @@ mod tests {
         assert_eq!(blaze.components_dir, "src/components");
         assert_eq!(blaze.layouts_dir, "src/layouts");
         assert_eq!(blaze.pages_dir, "src/pages");
-        assert_eq!(blaze.panic_on_error, false);
+        assert!(!blaze.panic_on_error);
     }
 
     #[test]
@@ -67,7 +73,7 @@ mod tests {
         assert_eq!(blaze.components_dir, "custom/components");
         assert_eq!(blaze.layouts_dir, "custom/layouts");
         assert_eq!(blaze.pages_dir, "custom/pages");
-        assert_eq!(blaze.panic_on_error, true);
+        assert!(blaze.panic_on_error);
     }
 
     #[test]
