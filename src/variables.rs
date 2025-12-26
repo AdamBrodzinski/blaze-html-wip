@@ -14,7 +14,7 @@ enum Part<'a> {
     Var(&'a str),
 }
 
-pub fn replace_variables(template_str: &str, data: &Value) -> Result<String, String> {
+pub fn process_variables(template_str: &str, data: &Value) -> Result<String, String> {
     let (_, parts) = parse_template(template_str).map_err(|e| e.to_string())?;
     let mut output = String::with_capacity(template_str.len());
 
@@ -74,7 +74,7 @@ mod tests {
     fn it_replaces_variables() {
         let data = json!({"name": "Jane", "age": "45"});
         let tmpl = "name: @name end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "name: Jane end");
     }
 
@@ -82,7 +82,7 @@ mod tests {
     fn it_replaces_snake_case_variables() {
         let data = json!({"first_name": "Jane", "age": "45"});
         let tmpl = "name: @first_name end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "name: Jane end");
     }
 
@@ -90,7 +90,7 @@ mod tests {
     fn it_replaces_leading_number_variables() {
         let data = json!({"2name": "Jane", "age": "45"});
         let tmpl = "name: @2name end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "name: Jane end");
     }
 
@@ -98,7 +98,7 @@ mod tests {
     fn it_replaces_nested_variables() {
         let data = json!({"person": {"name": "Jane", "age": "45"}});
         let tmpl = "@person.name end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Jane end");
     }
 
@@ -106,7 +106,7 @@ mod tests {
     fn it_renders_boolean() {
         let data = json!({"active": true});
         let tmpl = "Active: @active";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Active: true");
     }
 
@@ -114,7 +114,7 @@ mod tests {
     fn it_renders_integer_number() {
         let data = json!({"count": 42});
         let tmpl = "Count: @count";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Count: 42");
     }
 
@@ -122,7 +122,7 @@ mod tests {
     fn it_renders_float_number() {
         let data = json!({"price": 19.99});
         let tmpl = "Price: @price";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Price: 19.99");
     }
 
@@ -130,7 +130,7 @@ mod tests {
     fn it_renders_null_as_empty_string() {
         let data = json!({"value": null});
         let tmpl = "Value: @value end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Value:  end");
     }
 
@@ -138,7 +138,7 @@ mod tests {
     fn it_renders_object_as_empty_string() {
         let data = json!({"user": {"name": "Jane", "age": 30}});
         let tmpl = "User: @user end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "User:  end");
     }
 
@@ -146,7 +146,7 @@ mod tests {
     fn it_renders_array_as_empty_string() {
         let data = json!({"items": [1, 2, 3]});
         let tmpl = "Items: @items end";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Items:  end");
     }
 
@@ -161,7 +161,7 @@ mod tests {
         });
         let tmpl =
             "@name is @age years old, active: @active, balance: @balance, nickname: @nickname!";
-        let result = replace_variables(tmpl, &data);
+        let result = process_variables(tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "Alice is 30 years old, active: true, balance: 123.45, nickname: !"

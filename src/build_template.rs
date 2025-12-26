@@ -1,11 +1,11 @@
 use serde_json::Value;
 
-use crate::variables::replace_variables;
+use crate::variables::process_variables;
 use crate::BlazeTemplate;
 
 // composes many parsers together to buildup template
 pub fn build_template(_ctx: &BlazeTemplate, input: &str, data: &Value) -> Result<String, String> {
-    let input = replace_variables(input, data)?;
+    let input = process_variables(input, data)?;
     Ok(input)
 }
 
