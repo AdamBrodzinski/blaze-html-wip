@@ -54,7 +54,7 @@ pub fn process_layout(
     // read layout template based on identifier type
     let layout_content_str = match &page_parts.layout_identifier {
         LayoutIdentifier::Name(name) => {
-            panic!("Layout name attribute not yet supported: {}", name);
+            panic!("Layout name attribute not yet supported: {name}");
         }
         LayoutIdentifier::Path(path) => ctx.read_template(path)?,
     };

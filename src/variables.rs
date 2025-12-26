@@ -12,6 +12,7 @@ use crate::data::get_json_value;
 enum Part<'a> {
     Text(&'a str),
     Var(&'a str),
+    Escaped, // represents a literal @
 }
 
 pub fn process_variables(template_str: &str, data: &Value) -> Result<String, String> {
@@ -21,6 +22,7 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
     for part in parts {
         match part {
             Part::Text(t) => output.push_str(t),
+            Part::Escaped => output.push('@'),
             // transform the serde Value into a String, keyed by the variable name
             Part::Var(var_name) => {
                 let json_value = get_json_value(data, var_name)?;
@@ -52,6 +54,14 @@ fn variable(input: &str) -> IResult<&str, Part> {
     Ok((input, Part::Var(name)))
 }
 
+// ---------------------- escaped ----------------------
+
+/// parse @@ and return a literal @ marker
+fn escaped(input: &str) -> IResult<&str, Part> {
+    let (input, _) = tag("@@").parse(input)?;
+    Ok((input, Part::Escaped))
+}
+
 // ---------------------- text ----------------------
 
 fn text(input: &str) -> IResult<&str, Part> {
@@ -62,7 +72,8 @@ fn text(input: &str) -> IResult<&str, Part> {
 // ---------------------- template ----------------------
 
 fn parse_template(input: &str) -> IResult<&str, Vec<Part>> {
-    many0(alt((variable, text))).parse(input)
+    // note, checks escaped before variable
+    many0(alt((escaped, variable, text))).parse(input)
 }
 
 #[cfg(test)]
@@ -166,5 +177,29 @@ mod tests {
             result.unwrap(),
             "Alice is 30 years old, active: true, balance: 123.45, nickname: !"
         );
+    }
+
+    #[test]
+    fn it_escapes_at_symbol() {
+        let data = json!({});
+        let tmpl = "email: user@@example.com";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "email: user@example.com");
+    }
+
+    #[test]
+    fn it_escapes_css_at_rules() {
+        let data = json!({});
+        let tmpl = "@@media screen { }";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "@media screen { }");
+    }
+
+    #[test]
+    fn it_escapes_mixed_with_variables() {
+        let data = json!({"name": "Jane"});
+        let tmpl = "@name's email is user@@example.com";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Jane's email is user@example.com");
     }
 }
