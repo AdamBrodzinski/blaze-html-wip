@@ -1,7 +1,7 @@
 #![allow(unused)]
 use nom::bytes::complete::{take_till1, take_until};
 use nom::character::complete::{anychar, char, space0, space1};
-use nom::combinator::{peek, recognize, rest, value};
+use nom::combinator::{opt, peek, recognize, rest, value};
 use nom::multi::many_till;
 use nom::sequence::delimited;
 use nom::Parser;
@@ -42,7 +42,12 @@ pub fn process_layout(
     page_template_str: &str,
     _data: &Value,
 ) -> Result<String, String> {
-    // parse the page template and find a <Layout> tag and return text before tag, inside tags, after closing tag
+    // If no Layout tag, return input unchanged
+    if !page_template_str.contains("<Layout") {
+        return Ok(page_template_str.to_string());
+    }
+
+    // Parse the page template - errors if Layout tag is malformed
     let (_, page_parts) = extract_page_parts(page_template_str)
         .map_err(|e| format!("Failed to parse page template: {e}"))?;
 
