@@ -61,6 +61,12 @@ fn escaped(input: &str) -> IResult<&str, Part> {
 }
 
 fn escape_html(s: &str) -> String {
+    if !s
+        .bytes()
+        .any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''))
+    {
+        return s.to_owned();
+    }
     let mut escaped = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
