@@ -37,7 +37,7 @@ struct PageParts<'a> {
 }
 
 /// Accept a template and only transform the <Layout> section, leaving the inner contents
-pub fn transform_layout(
+pub fn process_layout(
     page_template_str: &str,
     layout_template_str: &str,
     _data: &Value,
@@ -141,7 +141,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <slot /> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -150,7 +150,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <  slot   /> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -159,7 +159,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='test'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -168,7 +168,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='test'><div>Content</div></Layout>";
         let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "<header>H</header><div>Content</div><footer>F</footer>"
@@ -180,7 +180,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "before<Layout name='test'><div>Content</div></Layout>after";
         let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "before<header>H</header><div>Content</div><footer>F</footer>after"
@@ -192,7 +192,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='foo'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -201,7 +201,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name=\"bar\">Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -210,7 +210,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert!(result.is_err());
     }
 
@@ -219,7 +219,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name = 'baz'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -228,7 +228,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout path='layouts/main.html'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -237,7 +237,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout path=\"layouts/main.html\">Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -246,7 +246,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Layout name='foo' path='bar'>Content</Layout>";
         let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(page_tmpl, layout_tmpl, &data);
         assert!(result.is_err());
     }
 }

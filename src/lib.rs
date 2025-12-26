@@ -14,6 +14,7 @@
 // ```
 
 mod build_template;
+mod component;
 mod data;
 mod layout;
 mod parsers;

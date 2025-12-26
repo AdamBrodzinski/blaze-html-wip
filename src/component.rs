@@ -36,7 +36,7 @@ struct PageParts<'a> {
     component_identifier: ComponentIdentifier<'a>,
 }
 
-pub fn transform_component(
+pub fn process_component(
     page_template_str: &str,
     component_template_str: &str,
     _data: &Value,
@@ -155,7 +155,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='test'>Content</Component>";
         let component_tmpl = "Header <slot /> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -164,7 +164,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='test'>Content</Component>";
         let component_tmpl = "Header <  slot   /> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='test'>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -182,7 +182,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='test'><div>Content</div></Component>";
         let component_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "<header>H</header><div>Content</div><footer>F</footer>"
@@ -194,7 +194,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "before<Component name='test'><div>Content</div></Component>after";
         let component_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "before<header>H</header><div>Content</div><footer>F</footer>after"
@@ -206,7 +206,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='foo'>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -215,7 +215,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name=\"bar\">Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -224,7 +224,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert!(result.is_err());
     }
 
@@ -233,7 +233,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name = 'baz'>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -242,7 +242,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component path='layouts/main.html'>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -251,7 +251,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component path=\"layouts/main.html\">Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
@@ -260,7 +260,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='foo' path='bar'>Content</Component>";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert!(result.is_err());
     }
 
@@ -269,7 +269,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component name='test' />";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header  Footer");
     }
 
@@ -278,7 +278,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "<Component path='layouts/main.html'/>";
         let component_tmpl = "Before <slot /> After";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Before  After");
     }
 
@@ -287,7 +287,7 @@ mod tests {
         let data = json!(());
         let page_tmpl = "prefix<Component name='test' />suffix";
         let component_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, component_tmpl, &data);
+        let result = process_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "prefixHeader  Footersuffix");
     }
 }
