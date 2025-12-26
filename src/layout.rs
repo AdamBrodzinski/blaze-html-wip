@@ -81,32 +81,47 @@ fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
 }
 
 /// Parse <Layout name='value'> or <Layout path='value'> opening tag
-fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
+/// Returns (LayoutIdentifier, is_self_closing)
+fn parse_layout_opening_tag(input: &str) -> IResult<&str, (LayoutIdentifier, bool)> {
     let (input, _) = tag("<Layout").parse(input)?;
     let (input, _) = space1(input)?;
     let (input, identifier) = alt((parse_name_attribute, parse_path_attribute)).parse(input)?;
     let (input, _) = space0(input)?;
-    let (input, _) = char('>').parse(input)?;
-    Ok((input, identifier))
+    let (input, is_self_closing) =
+        alt((value(true, tag("/>")), value(false, char('>')))).parse(input)?;
+    Ok((input, (identifier, is_self_closing)))
 }
 
 /// Extract prefix, layout content, and suffix from page template
 fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
     let (input, before) = take_until("<Layout").parse(input)?;
-    let (input, layout_identifier) = parse_layout_opening_tag(input)?;
-    let (input, inner) = take_until("</Layout>").parse(input)?;
-    let (input, _) = tag("</Layout>").parse(input)?;
-    let (input, after) = rest(input)?;
+    let (input, (layout_identifier, is_self_closing)) = parse_layout_opening_tag(input)?;
 
-    Ok((
-        input,
-        PageParts {
-            before_layout_tag: before,
-            inside_layout_tag: inner,
-            after_layout_tag: after,
-            layout_identifier,
-        },
-    ))
+    if is_self_closing {
+        let (input, after) = rest(input)?;
+        Ok((
+            input,
+            PageParts {
+                before_layout_tag: before,
+                inside_layout_tag: "",
+                after_layout_tag: after,
+                layout_identifier,
+            },
+        ))
+    } else {
+        let (input, inner) = take_until("</Layout>").parse(input)?;
+        let (input, _) = tag("</Layout>").parse(input)?;
+        let (input, after) = rest(input)?;
+        Ok((
+            input,
+            PageParts {
+                before_layout_tag: before,
+                inside_layout_tag: inner,
+                after_layout_tag: after,
+                layout_identifier,
+            },
+        ))
+    }
 }
 
 fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
@@ -248,5 +263,32 @@ mod tests {
         let layout_tmpl = "Header <slot/> Footer";
         let result = transform_layout(page_tmpl, layout_tmpl, &data);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn it_parses_self_closing_layout_tag() {
+        let data = json!(());
+        let page_tmpl = "<Layout name='test' />";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "Header  Footer");
+    }
+
+    #[test]
+    fn it_parses_self_closing_layout_with_path() {
+        let data = json!(());
+        let page_tmpl = "<Layout path='layouts/main.html'/>";
+        let layout_tmpl = "Before <slot /> After";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "Before  After");
+    }
+
+    #[test]
+    fn it_parses_self_closing_layout_with_surrounding_content() {
+        let data = json!(());
+        let page_tmpl = "prefix<Layout name='test' />suffix";
+        let layout_tmpl = "Header <slot/> Footer";
+        let result = transform_layout(page_tmpl, layout_tmpl, &data);
+        assert_eq!(result.unwrap(), "prefixHeader  Footersuffix");
     }
 }
