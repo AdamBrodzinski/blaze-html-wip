@@ -45,9 +45,9 @@ mod tests {
     #[test]
     fn it_transforms_simple_layout() {
         let ctx = setup_template_engine();
-        let data = json!(());
-        let page_tmpl = "<Layout path='layouts/test.html'>Content</Layout>";
+        let data = json!({"greeting": "Hello", "head": {"name": "Home"}});
+        let page_tmpl = "<Layout path='layouts/vars.html'>@greeting</Layout>";
         let result = build_template(&ctx, page_tmpl, &data).unwrap();
-        assert_eq!(result, "Header Content Footer");
+        assert_eq!(result, "Header Home Hello Footer\n");
     }
 }
