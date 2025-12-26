@@ -27,7 +27,7 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
             Part::Var(var_name) => {
                 let json_value = get_json_value(data, var_name)?;
                 match json_value {
-                    Value::String(x) => output.push_str(&escape_html(x)),
+                    Value::String(x) => escape_html_into(x, &mut output),
                     Value::Bool(x) => output.push_str(&x.to_string()),
                     Value::Number(x) => output.push_str(&x.to_string()),
                     Value::Null => {}
@@ -60,25 +60,25 @@ fn escaped(input: &str) -> IResult<&str, Part> {
     Ok((input, Part::Escaped))
 }
 
-fn escape_html(s: &str) -> String {
+/// Writes HTML-escaped string directly to output buffer (zero intermediate allocations)
+fn escape_html_into(s: &str, output: &mut String) {
     if !s
         .bytes()
         .any(|b| matches!(b, b'&' | b'<' | b'>' | b'"' | b'\''))
     {
-        return s.to_owned();
+        output.push_str(s);
+        return;
     }
-    let mut escaped = String::with_capacity(s.len());
     for c in s.chars() {
         match c {
-            '&' => escaped.push_str("&amp;"),
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&#x27;"),
-            _ => escaped.push(c),
+            '&' => output.push_str("&amp;"),
+            '<' => output.push_str("&lt;"),
+            '>' => output.push_str("&gt;"),
+            '"' => output.push_str("&quot;"),
+            '\'' => output.push_str("&#x27;"),
+            _ => output.push(c),
         }
     }
-    escaped
 }
 
 // ---------------------- text ----------------------
