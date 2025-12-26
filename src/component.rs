@@ -19,70 +19,70 @@ enum Part<'a> {
 }
 
 #[derive(Debug)]
-enum LayoutIdentifier<'a> {
+enum ComponentIdentifier<'a> {
     Name(&'a str),
     Path(&'a str),
 }
 
-struct LayoutContent<'a> {
-    before_layout_slot: &'a str,
-    after_layout_slot: &'a str,
+struct ComponentContent<'a> {
+    before_slot: &'a str,
+    after_slot: &'a str,
 }
 
 struct PageParts<'a> {
-    before_layout_tag: &'a str,
-    inside_layout_tag: &'a str,
-    after_layout_tag: &'a str,
-    layout_identifier: LayoutIdentifier<'a>,
+    before_component_tag: &'a str,
+    inside_component_tag: &'a str,
+    after_component_tag: &'a str,
+    component_identifier: ComponentIdentifier<'a>,
 }
 
 pub fn transform_component(
     page_template_str: &str,
-    layout_template_str: &str,
+    component_template_str: &str,
     _data: &Value,
 ) -> Result<String, String> {
-    let layout_content = layout_template_str.to_owned();
-    // find the <Layout> tags and return text before tag, inside tags, after closing tag
+    let component_content = component_template_str.to_owned();
+    // find the <Component> tags and return text before tag, inside tags, after closing tag
     let (_, page_parts) = extract_page_parts(page_template_str)
         .map_err(|e| format!("Failed to parse page template: {e}"))?;
-    // load the layout and split content before and after <slot/> tag
-    let (_, layout_content) = extract_layout_start_end(layout_content.as_str())
-        .map_err(|e| format!("Failed to parse layout template: {e}"))?;
+    // load the component and split content before and after <slot/> tag
+    let (_, component_content) = extract_component_start_end(component_content.as_str())
+        .map_err(|e| format!("Failed to parse component template: {e}"))?;
 
     Ok(format!(
         "{}{}{}{}{}",
-        page_parts.before_layout_tag,
-        layout_content.before_layout_slot,
-        page_parts.inside_layout_tag,
-        layout_content.after_layout_slot,
-        page_parts.after_layout_tag
+        page_parts.before_component_tag,
+        component_content.before_slot,
+        page_parts.inside_component_tag,
+        component_content.after_slot,
+        page_parts.after_component_tag
     ))
 }
 
-/// Parse name='value' attribute and return LayoutIdentifier::Name
-fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
+/// Parse name='value' attribute and return ComponentIdentifier::Name
+fn parse_name_attribute(input: &str) -> IResult<&str, ComponentIdentifier> {
     let (input, _) = tag("name").parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('=').parse(input)?;
     let (input, _) = space0(input)?;
     let (input, value) = parse_quoted_value(input)?;
-    Ok((input, LayoutIdentifier::Name(value)))
+    Ok((input, ComponentIdentifier::Name(value)))
 }
 
-/// Parse path='value' attribute and return LayoutIdentifier::Path
-fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
+/// Parse path='value' attribute and return ComponentIdentifier::Path
+fn parse_path_attribute(input: &str) -> IResult<&str, ComponentIdentifier> {
     let (input, _) = tag("path").parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('=').parse(input)?;
     let (input, _) = space0(input)?;
     let (input, value) = parse_quoted_value(input)?;
-    Ok((input, LayoutIdentifier::Path(value)))
+    Ok((input, ComponentIdentifier::Path(value)))
 }
 
-/// Parse <Layout name='value'> or <Layout path='value'> opening tag
-/// Returns (LayoutIdentifier, is_self_closing)
-fn parse_layout_opening_tag(input: &str) -> IResult<&str, (LayoutIdentifier, bool)> {
-    let (input, _) = tag("<Layout").parse(input)?;
+/// Parse <Component name='value'> or <Component path='value'> opening tag
+/// Returns (ComponentIdentifier, is_self_closing)
+fn parse_component_opening_tag(input: &str) -> IResult<&str, (ComponentIdentifier, bool)> {
+    let (input, _) = tag("<Component").parse(input)?;
     let (input, _) = space1(input)?;
     let (input, identifier) = alt((parse_name_attribute, parse_path_attribute)).parse(input)?;
     let (input, _) = space0(input)?;
@@ -91,48 +91,48 @@ fn parse_layout_opening_tag(input: &str) -> IResult<&str, (LayoutIdentifier, boo
     Ok((input, (identifier, is_self_closing)))
 }
 
-/// Extract prefix, layout content, and suffix from page template
+/// Extract prefix, component content, and suffix from page template
 fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
-    let (input, before) = take_until("<Layout").parse(input)?;
-    let (input, (layout_identifier, is_self_closing)) = parse_layout_opening_tag(input)?;
+    let (input, before) = take_until("<Component").parse(input)?;
+    let (input, (component_identifier, is_self_closing)) = parse_component_opening_tag(input)?;
 
     if is_self_closing {
         let (input, after) = rest(input)?;
         Ok((
             input,
             PageParts {
-                before_layout_tag: before,
-                inside_layout_tag: "",
-                after_layout_tag: after,
-                layout_identifier,
+                before_component_tag: before,
+                inside_component_tag: "",
+                after_component_tag: after,
+                component_identifier,
             },
         ))
     } else {
-        let (input, inner) = take_until("</Layout>").parse(input)?;
-        let (input, _) = tag("</Layout>").parse(input)?;
+        let (input, inner) = take_until("</Component>").parse(input)?;
+        let (input, _) = tag("</Component>").parse(input)?;
         let (input, after) = rest(input)?;
         Ok((
             input,
             PageParts {
-                before_layout_tag: before,
-                inside_layout_tag: inner,
-                after_layout_tag: after,
-                layout_identifier,
+                before_component_tag: before,
+                inside_component_tag: inner,
+                after_component_tag: after,
+                component_identifier,
             },
         ))
     }
 }
 
-fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
+fn extract_component_start_end(input: &str) -> IResult<&str, ComponentContent> {
     // everything up to (not including) where slot_tag starts
     let (input, start) = recognize(many_till(anychar, peek(slot_tag))).parse(input)?;
     let (input, _) = slot_tag(input)?;
     let (input, end) = rest(input)?;
     Ok((
         input,
-        LayoutContent {
-            before_layout_slot: start,
-            after_layout_slot: end,
+        ComponentContent {
+            before_slot: start,
+            after_slot: end,
         },
     ))
 }
@@ -151,38 +151,38 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn it_transforms_simple_layout() {
+    fn it_transforms_simple_component() {
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <slot /> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='test'>Content</Component>";
+        let component_tmpl = "Header <slot /> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_transforms_layout_slot_tag_with_spaces() {
+    fn it_transforms_component_slot_tag_with_spaces() {
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <  slot   /> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='test'>Content</Component>";
+        let component_tmpl = "Header <  slot   /> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_transforms_layout_slot_tag_with_no_spaces() {
+    fn it_transforms_component_slot_tag_with_no_spaces() {
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='test'>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_transforms_nested_layout() {
+    fn it_transforms_nested_component() {
         let data = json!(());
-        let page_tmpl = "<Layout name='test'><div>Content</div></Layout>";
-        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='test'><div>Content</div></Component>";
+        let component_tmpl = "<header>H</header><slot /><footer>F</footer>";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "<header>H</header><div>Content</div><footer>F</footer>"
@@ -190,11 +190,11 @@ mod tests {
     }
 
     #[test]
-    fn it_transforms_layout_with_outer_text() {
+    fn it_transforms_component_with_outer_text() {
         let data = json!(());
-        let page_tmpl = "before<Layout name='test'><div>Content</div></Layout>after";
-        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "before<Component name='test'><div>Content</div></Component>after";
+        let component_tmpl = "<header>H</header><slot /><footer>F</footer>";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "before<header>H</header><div>Content</div><footer>F</footer>after"
@@ -202,92 +202,92 @@ mod tests {
     }
 
     #[test]
-    fn it_loads_layout_template() {
+    fn it_loads_component_template() {
         let data = json!(());
-        let page_tmpl = "<Layout name='foo'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='foo'>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_parses_layout_name_with_double_quotes() {
+    fn it_parses_component_name_with_double_quotes() {
         let data = json!(());
-        let page_tmpl = "<Layout name=\"bar\">Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name=\"bar\">Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_errors_when_name_attribute_is_missing() {
         let data = json!(());
-        let page_tmpl = "<Layout>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert!(result.is_err());
     }
 
     #[test]
-    fn it_parses_layout_name_with_spaces_around_equals() {
+    fn it_parses_component_name_with_spaces_around_equals() {
         let data = json!(());
-        let page_tmpl = "<Layout name = 'baz'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name = 'baz'>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_parses_layout_path_attribute() {
+    fn it_parses_component_path_attribute() {
         let data = json!(());
-        let page_tmpl = "<Layout path='layouts/main.html'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component path='layouts/main.html'>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
-    fn it_parses_layout_path_with_double_quotes() {
+    fn it_parses_component_path_with_double_quotes() {
         let data = json!(());
-        let page_tmpl = "<Layout path=\"layouts/main.html\">Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component path=\"layouts/main.html\">Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_errors_when_both_name_and_path_are_present() {
         let data = json!(());
-        let page_tmpl = "<Layout name='foo' path='bar'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='foo' path='bar'>Content</Component>";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert!(result.is_err());
     }
 
     #[test]
-    fn it_parses_self_closing_layout_tag() {
+    fn it_parses_self_closing_component_tag() {
         let data = json!(());
-        let page_tmpl = "<Layout name='test' />";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component name='test' />";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Header  Footer");
     }
 
     #[test]
-    fn it_parses_self_closing_layout_with_path() {
+    fn it_parses_self_closing_component_with_path() {
         let data = json!(());
-        let page_tmpl = "<Layout path='layouts/main.html'/>";
-        let layout_tmpl = "Before <slot /> After";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Component path='layouts/main.html'/>";
+        let component_tmpl = "Before <slot /> After";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "Before  After");
     }
 
     #[test]
-    fn it_parses_self_closing_layout_with_surrounding_content() {
+    fn it_parses_self_closing_component_with_surrounding_content() {
         let data = json!(());
-        let page_tmpl = "prefix<Layout name='test' />suffix";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = transform_component(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "prefix<Component name='test' />suffix";
+        let component_tmpl = "Header <slot/> Footer";
+        let result = transform_component(page_tmpl, component_tmpl, &data);
         assert_eq!(result.unwrap(), "prefixHeader  Footersuffix");
     }
 }
