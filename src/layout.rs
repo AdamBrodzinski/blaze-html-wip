@@ -12,6 +12,7 @@ use serde_json::Value;
 
 use crate::data::get_json_value;
 use crate::parsers::parse_quoted_value;
+use crate::BlazeTemplate;
 
 #[derive(Debug)]
 enum Part<'a> {
@@ -36,18 +37,25 @@ struct PageParts<'a> {
     layout_identifier: LayoutIdentifier<'a>,
 }
 
-/// Accept a template and only transform the <Layout> section, leaving the inner contents
 pub fn process_layout(
+    ctx: &BlazeTemplate,
     page_template_str: &str,
-    layout_template_str: &str,
     _data: &Value,
 ) -> Result<String, String> {
-    let layout_content = layout_template_str.to_owned();
-    // find the <Layout> tags and return text before tag, inside tags, after closing tag
+    // parse the page template and find a <Layout> tag and return text before tag, inside tags, after closing tag
     let (_, page_parts) = extract_page_parts(page_template_str)
         .map_err(|e| format!("Failed to parse page template: {e}"))?;
+
+    // read layout template based on identifier type
+    let layout_content_str = match &page_parts.layout_identifier {
+        LayoutIdentifier::Name(name) => {
+            panic!("Layout name attribute not yet supported: {}", name);
+        }
+        LayoutIdentifier::Path(path) => ctx.read_template(path)?,
+    };
+
     // load the layout and split content before and after <slot/> tag
-    let (_, layout_content) = extract_layout_start_end(layout_content.as_str())
+    let (_, layout_content) = extract_layout_start_end(&layout_content_str)
         .map_err(|e| format!("Failed to parse layout template: {e}"))?;
 
     Ok(format!(
@@ -60,7 +68,6 @@ pub fn process_layout(
     ))
 }
 
-/// Parse name='value' attribute and return LayoutIdentifier::Name
 fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     let (input, _) = tag("name").parse(input)?;
     let (input, _) = space0(input)?;
@@ -70,7 +77,6 @@ fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, LayoutIdentifier::Name(value)))
 }
 
-/// Parse path='value' attribute and return LayoutIdentifier::Path
 fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     let (input, _) = tag("path").parse(input)?;
     let (input, _) = space0(input)?;
@@ -80,7 +86,7 @@ fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, LayoutIdentifier::Path(value)))
 }
 
-/// Parse <Layout name='value'> or <Layout path='value'> opening tag
+// <Layout name='value'> or <Layout path='value'> opening tag
 fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
     let (input, _) = tag("<Layout").parse(input)?;
     let (input, _) = space1(input)?;
@@ -90,7 +96,6 @@ fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, identifier))
 }
 
-/// Extract prefix, layout content, and suffix from page template
 fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
     let (input, before) = take_until("<Layout").parse(input)?;
     let (input, layout_identifier) = parse_layout_opening_tag(input)?;
@@ -109,6 +114,7 @@ fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
     ))
 }
 
+// parse a layout template and handle slot
 fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
     // everything up to (not including) where slot_tag starts
     let (input, start) = recognize(many_till(anychar, peek(slot_tag))).parse(input)?;
@@ -134,41 +140,46 @@ fn slot_tag(input: &str) -> IResult<&str, ()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::BlazeTemplate;
     use serde_json::json;
+
+    fn setup_ctx() -> BlazeTemplate {
+        BlazeTemplate::new().set_root_directory("test_files")
+    }
 
     #[test]
     fn it_transforms_simple_layout() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <slot /> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path='layouts/test.html'>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_transforms_layout_slot_tag_with_spaces() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <  slot   /> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path='layouts/test-spaces.html'>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_transforms_layout_slot_tag_with_no_spaces() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout name='test'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path='layouts/test.html'>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_transforms_nested_layout() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout name='test'><div>Content</div></Layout>";
-        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path='layouts/test-nested.html'><div>Content</div></Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "<header>H</header><div>Content</div><footer>F</footer>"
@@ -177,10 +188,11 @@ mod tests {
 
     #[test]
     fn it_transforms_layout_with_outer_text() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "before<Layout name='test'><div>Content</div></Layout>after";
-        let layout_tmpl = "<header>H</header><slot /><footer>F</footer>";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl =
+            "before<Layout path='layouts/test-nested.html'><div>Content</div></Layout>after";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(
             result.unwrap(),
             "before<header>H</header><div>Content</div><footer>F</footer>after"
@@ -188,65 +200,56 @@ mod tests {
     }
 
     #[test]
-    fn it_loads_layout_template() {
+    fn it_loads_layout_template_from_path() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout name='foo'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
-        assert_eq!(result.unwrap(), "Header Content Footer");
-    }
-
-    #[test]
-    fn it_parses_layout_name_with_double_quotes() {
-        let data = json!(());
-        let page_tmpl = "<Layout name=\"bar\">Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
-        assert_eq!(result.unwrap(), "Header Content Footer");
-    }
-
-    #[test]
-    fn it_errors_when_name_attribute_is_missing() {
-        let data = json!(());
-        let page_tmpl = "<Layout>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
-        assert!(result.is_err());
-    }
-
-    #[test]
-    fn it_parses_layout_name_with_spaces_around_equals() {
-        let data = json!(());
-        let page_tmpl = "<Layout name = 'baz'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
-        assert_eq!(result.unwrap(), "Header Content Footer");
-    }
-
-    #[test]
-    fn it_parses_layout_path_attribute() {
-        let data = json!(());
-        let page_tmpl = "<Layout path='layouts/main.html'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path='layouts/test.html'>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
     fn it_parses_layout_path_with_double_quotes() {
+        let ctx = setup_ctx();
         let data = json!(());
-        let page_tmpl = "<Layout path=\"layouts/main.html\">Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let page_tmpl = "<Layout path=\"layouts/test.html\">Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert_eq!(result.unwrap(), "Header Content Footer");
     }
 
     #[test]
+    fn it_errors_when_attribute_is_missing() {
+        let ctx = setup_ctx();
+        let data = json!(());
+        let page_tmpl = "<Layout>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn it_parses_layout_path_with_spaces_around_equals() {
+        let ctx = setup_ctx();
+        let data = json!(());
+        let page_tmpl = "<Layout path = 'layouts/test.html'>Content</Layout>";
+        let result = process_layout(&ctx, page_tmpl, &data);
+        assert_eq!(result.unwrap(), "Header Content Footer");
+    }
+
+    #[test]
+    #[should_panic(expected = "Layout name attribute not yet supported")]
+    fn it_panics_when_name_attribute_is_used() {
+        let ctx = setup_ctx();
+        let data = json!(());
+        let page_tmpl = "<Layout name='test'>Content</Layout>";
+        let _ = process_layout(&ctx, page_tmpl, &data);
+    }
+
+    #[test]
     fn it_errors_when_both_name_and_path_are_present() {
+        let ctx = setup_ctx();
         let data = json!(());
         let page_tmpl = "<Layout name='foo' path='bar'>Content</Layout>";
-        let layout_tmpl = "Header <slot/> Footer";
-        let result = process_layout(page_tmpl, layout_tmpl, &data);
+        let result = process_layout(&ctx, page_tmpl, &data);
         assert!(result.is_err());
     }
 }

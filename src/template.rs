@@ -54,7 +54,7 @@ impl BlazeTemplate {
             .collect()
     }
 
-    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
+    pub fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
         let use_cache = self.cache_file_read && !self.dev;
 
         if use_cache {
