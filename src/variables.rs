@@ -60,7 +60,7 @@ fn escaped(input: &str) -> IResult<&str, Part> {
     Ok((input, Part::Escaped))
 }
 
-/// Writes HTML-escaped string directly to output buffer (zero intermediate allocations)
+// writes directly to output buffer to intermediate allocations
 fn escape_html_into(s: &str, output: &mut String) {
     if !s
         .bytes()
