@@ -5,15 +5,15 @@ Includes a CSS file from project. The rendered style tag will append the hash of
 
 Template:
 ```html
-<head>
+<div>
   <!-- attrs other than href are passed through to output -->
   <Style crossorigin="anonymous" path="src/pages/home/view.css" />
-</head>
+</div>
 ```
 
 Output:
 ```html
-<head>
+<div>
   <link crossorigin="anonymous" href="src/pages/home/view.css?5abec1f225ee17f6491b438673e41f3a" />
-</head>
+</div>
 ```

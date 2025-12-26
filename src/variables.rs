@@ -27,7 +27,7 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
             Part::Var(var_name) => {
                 let json_value = get_json_value(data, var_name)?;
                 match json_value {
-                    Value::String(x) => output.push_str(x),
+                    Value::String(x) => output.push_str(&escape_html(x)),
                     Value::Bool(x) => output.push_str(&x.to_string()),
                     Value::Number(x) => output.push_str(&x.to_string()),
                     Value::Null => {}
@@ -42,24 +42,37 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
 
 // ---------------------- variable ----------------------
 
-/// a valid variable name (after @)
 fn variable_key(input: &str) -> IResult<&str, &str> {
     take_while1(|c: char| c.is_alphanumeric() || c == '_' || c == '.').parse(input)
 }
 
-/// parse the entire variable @foo and return the variable name foo
+// parse the entire variable @foo and return the variable name foo
 fn variable(input: &str) -> IResult<&str, Part> {
     // preceeded matches the @ + var_name then discards @ tag
     let (input, name) = preceded(tag("@"), variable_key).parse(input)?;
     Ok((input, Part::Var(name)))
 }
 
-// ---------------------- escaped ----------------------
+// ---------------------- escape ----------------------
 
-/// parse @@ and return a literal @ marker
 fn escaped(input: &str) -> IResult<&str, Part> {
     let (input, _) = tag("@@").parse(input)?;
     Ok((input, Part::Escaped))
+}
+
+fn escape_html(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#x27;"),
+            _ => escaped.push(c),
+        }
+    }
+    escaped
 }
 
 // ---------------------- text ----------------------
@@ -201,5 +214,43 @@ mod tests {
         let tmpl = "@name's email is user@@example.com";
         let result = process_variables(tmpl, &data);
         assert_eq!(result.unwrap(), "Jane's email is user@example.com");
+    }
+
+    #[test]
+    fn it_escapes_html_in_strings() {
+        let data = json!({"content": "<script>alert('xss')</script>"});
+        let tmpl = "@content";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "&lt;script&gt;alert(&#x27;xss&#x27;)&lt;/script&gt;"
+        );
+    }
+
+    #[test]
+    fn it_escapes_ampersands() {
+        let data = json!({"text": "Tom & Jerry"});
+        let tmpl = "@text";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "Tom &amp; Jerry");
+    }
+
+    #[test]
+    fn it_escapes_quotes() {
+        let data = json!({"attr": "value\" onclick=\"evil()"});
+        let tmpl = "<div data-value=\"@attr\"></div>";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(
+            result.unwrap(),
+            "<div data-value=\"value&quot; onclick=&quot;evil()\"></div>"
+        );
+    }
+
+    #[test]
+    fn it_escapes_angle_brackets() {
+        let data = json!({"math": "1 < 2 > 0"});
+        let tmpl = "@math";
+        let result = process_variables(tmpl, &data);
+        assert_eq!(result.unwrap(), "1 &lt; 2 &gt; 0");
     }
 }
