@@ -81,9 +81,9 @@ impl BlazeTemplate {
         Ok(content)
     }
 
-    pub fn render_page(&self, _data: Value, rel_page_path: &str) -> Result<String, String> {
+    pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
         let template_file = self.read_template(rel_page_path)?;
-        build_template(self, &template_file)
+        build_template(self, &template_file, data)
     }
 }
 
@@ -123,7 +123,7 @@ mod tests {
     fn fetches_template_and_passes_to_build() {
         let blaze = BlazeTemplate::new().set_root_directory("test_files");
         let data = json!(());
-        let result = blaze.render_page(data, "pages/static.html").unwrap();
+        let result = blaze.render_page("pages/static.html", &data).unwrap();
         assert_eq!(result, "<div>Hello World</div>\n");
     }
 }
