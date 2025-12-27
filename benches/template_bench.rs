@@ -44,6 +44,15 @@ fn bench_escaped_at_symbols(c: &mut Criterion) {
     });
 }
 
+fn bench_many_layout(c: &mut Criterion) {
+    let blaze = setup();
+    let data = json!({"name": "Jane", "age": 30});
+
+    c.bench_function("many_layout", |b| {
+        b.iter(|| blaze.render_page(black_box("bench/with_many_layout.html"), black_box(&data)))
+    });
+}
+
 // fn bench_each_tag_simple(c: &mut Criterion) {
 //     let tmpl = "<each>Content to extract</each>";
 //     let data = json!(());
@@ -76,6 +85,7 @@ criterion_group!(
     bench_simple_variables,
     bench_deeply_nested_fields,
     bench_layout,
+    bench_many_layout,
     bench_escaped_at_symbols
 );
 criterion_main!(benches);
