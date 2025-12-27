@@ -149,7 +149,9 @@ mod tests {
     use serde_json::json;
 
     fn setup_ctx() -> BlazeTemplate {
-        BlazeTemplate::new().set_root_directory("test_files")
+        BlazeTemplate::builder()
+            .set_root_directory("test_files")
+            .build()
     }
 
     #[test]

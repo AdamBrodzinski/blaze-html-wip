@@ -7,18 +7,27 @@ use serde_json::Value;
 use crate::build_template::build_template;
 
 #[derive(Debug, Clone)]
-pub struct BlazeTemplate {
+pub struct BlazeTemplateConfig {
+    pub dev: bool,
+    pub panic_on_error: bool,
+    pub panic_on_null: bool,
+    pub project_path: String,
+    pub root_dir: String,
+    pub cache_file_read: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct BlazeTemplateBuilder {
     dev: bool,
     panic_on_error: bool,
     panic_on_null: bool,
     project_path: String,
     root_dir: String,
     cache_file_read: bool,
-    file_cache: Arc<RwLock<HashMap<String, String>>>,
 }
 
-impl BlazeTemplate {
-    pub fn new() -> Self {
+impl Default for BlazeTemplateBuilder {
+    fn default() -> Self {
         Self {
             dev: false,
             panic_on_error: false,
@@ -26,10 +35,11 @@ impl BlazeTemplate {
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
             cache_file_read: true,
-            file_cache: Arc::new(RwLock::new(HashMap::new())),
         }
     }
+}
 
+impl BlazeTemplateBuilder {
     pub fn set_root_directory(mut self, path: &str) -> Self {
         self.root_dir = path.to_string();
         self
@@ -55,14 +65,52 @@ impl BlazeTemplate {
         self
     }
 
+    pub fn build(self) -> BlazeTemplate {
+        BlazeTemplate {
+            config: BlazeTemplateConfig {
+                dev: self.dev,
+                panic_on_error: self.panic_on_error,
+                panic_on_null: self.panic_on_null,
+                project_path: self.project_path,
+                root_dir: self.root_dir,
+                cache_file_read: self.cache_file_read,
+            },
+            file_cache: Arc::new(RwLock::new(HashMap::new())),
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct BlazeTemplate {
+    config: BlazeTemplateConfig,
+    file_cache: Arc<RwLock<HashMap<String, String>>>,
+}
+
+impl BlazeTemplate {
+    pub fn builder() -> BlazeTemplateBuilder {
+        BlazeTemplateBuilder::default()
+    }
+
+    pub fn new() -> Self {
+        Self::builder().build()
+    }
+
+    pub fn config(&self) -> &BlazeTemplateConfig {
+        &self.config
+    }
+
     fn get_template_path(&self, rel_page_path: &str) -> PathBuf {
-        [&self.project_path, &self.root_dir, rel_page_path]
-            .iter()
-            .collect()
+        [
+            &self.config.project_path,
+            &self.config.root_dir,
+            rel_page_path,
+        ]
+        .iter()
+        .collect()
     }
 
     pub fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        let use_cache = self.cache_file_read && !self.dev;
+        let use_cache = self.config.cache_file_read && !self.config.dev;
 
         if use_cache {
             let cache = self
@@ -109,29 +157,32 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        assert_eq!(blaze.root_dir, "src");
-        assert_eq!(blaze.dev, false);
-        assert_eq!(blaze.panic_on_error, false);
-        assert_eq!(blaze.panic_on_null, true);
+        assert_eq!(blaze.config().root_dir, "src");
+        assert_eq!(blaze.config().dev, false);
+        assert_eq!(blaze.config().panic_on_error, false);
+        assert_eq!(blaze.config().panic_on_null, true);
     }
 
     #[test]
     fn test_builder_pattern() {
-        let blaze = BlazeTemplate::new()
+        let blaze = BlazeTemplate::builder()
             .set_root_directory("customer/pages")
             .enable_dev(true)
             .panic_on_error(true)
-            .panic_on_null(false);
+            .panic_on_null(false)
+            .build();
 
-        assert_eq!(blaze.root_dir, "customer/pages");
-        assert_eq!(blaze.dev, true);
-        assert_eq!(blaze.panic_on_error, true);
-        assert_eq!(blaze.panic_on_null, false);
+        assert_eq!(blaze.config().root_dir, "customer/pages");
+        assert_eq!(blaze.config().dev, true);
+        assert_eq!(blaze.config().panic_on_error, true);
+        assert_eq!(blaze.config().panic_on_null, false);
     }
 
     #[test]
     fn fetches_template_and_passes_to_build() {
-        let blaze = BlazeTemplate::new().set_root_directory("test_files");
+        let blaze = BlazeTemplate::builder()
+            .set_root_directory("test_files")
+            .build();
         let data = json!(());
         let result = blaze.render_page("pages/static.html", &data).unwrap();
         assert_eq!(result, "<div>Hello World</div>\n");

@@ -3,7 +3,9 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
 
 fn setup() -> BlazeTemplate {
-    BlazeTemplate::new().set_root_directory("test_files")
+    BlazeTemplate::builder()
+        .set_root_directory("test_files")
+        .build()
 }
 
 fn bench_simple_variables(c: &mut Criterion) {
