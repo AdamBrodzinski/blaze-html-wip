@@ -24,6 +24,7 @@ pub struct BlazeTemplateBuilder {
     project_path: String,
     root_dir: String,
     cache_file_read: bool,
+    component_registry: HashMap<String, String>,
 }
 
 impl Default for BlazeTemplateBuilder {
@@ -35,6 +36,7 @@ impl Default for BlazeTemplateBuilder {
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
             cache_file_read: true,
+            component_registry: HashMap::new(),
         }
     }
 }
@@ -65,6 +67,12 @@ impl BlazeTemplateBuilder {
         self
     }
 
+    pub fn register_component(mut self, name: &str, path: &str) -> Self {
+        self.component_registry
+            .insert(name.to_string(), path.to_string());
+        self
+    }
+
     pub fn build(self) -> BlazeTemplate {
         BlazeTemplate {
             config: BlazeTemplateConfig {
@@ -76,6 +84,7 @@ impl BlazeTemplateBuilder {
                 cache_file_read: self.cache_file_read,
             },
             file_cache: Arc::new(RwLock::new(HashMap::new())),
+            component_registry: self.component_registry,
         }
     }
 }
@@ -84,6 +93,7 @@ impl BlazeTemplateBuilder {
 pub struct BlazeTemplate {
     config: BlazeTemplateConfig,
     file_cache: Arc<RwLock<HashMap<String, String>>>,
+    component_registry: HashMap<String, String>,
 }
 
 impl BlazeTemplate {
@@ -97,6 +107,10 @@ impl BlazeTemplate {
 
     pub fn config(&self) -> &BlazeTemplateConfig {
         &self.config
+    }
+
+    pub fn get_component_path(&self, name: &str) -> Option<&String> {
+        self.component_registry.get(name)
     }
 
     fn get_template_path(&self, rel_page_path: &str) -> PathBuf {
