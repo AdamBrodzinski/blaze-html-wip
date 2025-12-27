@@ -30,8 +30,13 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
                     Value::String(x) => escape_html_into(x, &mut output),
                     Value::Bool(x) => output.push_str(&x.to_string()),
                     Value::Number(x) => output.push_str(&x.to_string()),
-                    Value::Null => {}
-                    Value::Object(_) | Value::Array(_) => {}
+                    Value::Null => return Err(String::from("Not supported")),
+                    Value::Array(arr) => {
+                        return Err(format!("Cannot render array to string {arr:?}"));
+                    }
+                    Value::Object(obj) => {
+                        return Err(format!("Cannot render obj to string {obj:?}"));
+                    }
                 }
             }
         }
