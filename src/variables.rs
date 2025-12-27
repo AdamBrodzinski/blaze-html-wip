@@ -162,27 +162,27 @@ mod tests {
     }
 
     #[test]
-    fn it_renders_null_as_empty_string() {
+    fn it_errors_on_null() {
         let data = json!({"value": null});
         let tmpl = "Value: @value end";
         let result = process_variables(tmpl, &data);
-        assert_eq!(result.unwrap(), "Value:  end");
+        assert!(result.is_err());
     }
 
     #[test]
-    fn it_renders_object_as_empty_string() {
+    fn it_errors_on_object() {
         let data = json!({"user": {"name": "Jane", "age": 30}});
         let tmpl = "User: @user end";
         let result = process_variables(tmpl, &data);
-        assert_eq!(result.unwrap(), "User:  end");
+        assert!(result.is_err());
     }
 
     #[test]
-    fn it_renders_array_as_empty_string() {
+    fn it_errors_on_array() {
         let data = json!({"items": [1, 2, 3]});
         let tmpl = "Items: @items end";
         let result = process_variables(tmpl, &data);
-        assert_eq!(result.unwrap(), "Items:  end");
+        assert!(result.is_err());
     }
 
     #[test]
@@ -191,15 +191,13 @@ mod tests {
             "name": "Alice",
             "age": 30,
             "active": true,
-            "balance": 123.45,
-            "nickname": null
+            "balance": 123.45
         });
-        let tmpl =
-            "@name is @age years old, active: @active, balance: @balance, nickname: @nickname!";
+        let tmpl = "@name is @age years old, active: @active, balance: @balance!";
         let result = process_variables(tmpl, &data);
         assert_eq!(
             result.unwrap(),
-            "Alice is 30 years old, active: true, balance: 123.45, nickname: !"
+            "Alice is 30 years old, active: true, balance: 123.45!"
         );
     }
 
