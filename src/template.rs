@@ -10,6 +10,7 @@ use crate::build_template::build_template;
 pub struct BlazeTemplate {
     dev: bool,
     panic_on_error: bool,
+    panic_on_null: bool,
     project_path: String,
     root_dir: String,
     cache_file_read: bool,
@@ -21,6 +22,7 @@ impl BlazeTemplate {
         Self {
             dev: false,
             panic_on_error: false,
+            panic_on_null: true,
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
             cache_file_read: true,
@@ -35,6 +37,11 @@ impl BlazeTemplate {
 
     pub fn panic_on_error(mut self, should_panic: bool) -> Self {
         self.panic_on_error = should_panic;
+        self
+    }
+
+    pub fn panic_on_null(mut self, should_panic: bool) -> Self {
+        self.panic_on_null = should_panic;
         self
     }
 
@@ -105,6 +112,7 @@ mod tests {
         assert_eq!(blaze.root_dir, "src");
         assert_eq!(blaze.dev, false);
         assert_eq!(blaze.panic_on_error, false);
+        assert_eq!(blaze.panic_on_null, true);
     }
 
     #[test]
@@ -112,11 +120,13 @@ mod tests {
         let blaze = BlazeTemplate::new()
             .set_root_directory("customer/pages")
             .enable_dev(true)
-            .panic_on_error(true);
+            .panic_on_error(true)
+            .panic_on_null(false);
 
         assert_eq!(blaze.root_dir, "customer/pages");
         assert_eq!(blaze.dev, true);
         assert_eq!(blaze.panic_on_error, true);
+        assert_eq!(blaze.panic_on_null, false);
     }
 
     #[test]
