@@ -24,18 +24,18 @@ struct SlotParts<'a> {
     after_slot: &'a str,
 }
 
-/// Quick check if input might contain component tags (uppercase after <)
+// prevents parser from failing if it gets to the end and nothing was found
 fn might_contain_components(input: &str) -> bool {
     let bytes = input.as_bytes();
     for i in 0..bytes.len().saturating_sub(1) {
-        if bytes[i] == b'<' && bytes.get(i + 1).map_or(false, |b| b.is_ascii_uppercase()) {
+        if bytes[i] == b'<' && bytes.get(i + 1).is_some_and(|b| b.is_ascii_uppercase()) {
             return true;
         }
     }
     false
 }
 
-/// Parse uppercase tag name (Card, Button, etc.)
+// components use the syntax <Foo>, where any uppercase tag is assumed to be a component
 fn uppercase_tag_name(input: &str) -> IResult<&str, &str> {
     recognize((
         satisfy(|c: char| c.is_ascii_uppercase()),
@@ -44,7 +44,7 @@ fn uppercase_tag_name(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-/// Parse <Card> or <Card /> opening tag, returning (tag_name, is_self_closing)
+// parse both <Card>inner</Card or self closing tag <Card />
 fn parse_component_opening_tag(input: &str) -> IResult<&str, (&str, bool)> {
     let (input, _) = char('<').parse(input)?;
     let (input, tag_name) = uppercase_tag_name(input)?;
@@ -54,7 +54,6 @@ fn parse_component_opening_tag(input: &str) -> IResult<&str, (&str, bool)> {
     Ok((input, (tag_name, is_self_closing)))
 }
 
-/// Find and extract the first component tag from input
 fn extract_first_component(input: &str) -> Result<Option<ComponentInstance>, String> {
     let bytes = input.as_bytes();
     let mut pos = 0;
@@ -128,15 +127,14 @@ fn extract_slot_parts(input: &str) -> IResult<&str, SlotParts> {
     ))
 }
 
-/// Insert inner content at the <slot /> position in a component template
 fn insert_slot_content(template: &str, inner_content: &str) -> Result<String, String> {
     if let Ok((_, slot_parts)) = extract_slot_parts(template) {
         Ok(format!(
             "{}{}{}",
             slot_parts.before_slot, inner_content, slot_parts.after_slot
         ))
+        // TODO possible edge case where it has a slot and fails?
     } else {
-        // No slot - just use template directly (ignore inner content)
         Ok(template.to_string())
     }
 }
@@ -146,32 +144,29 @@ pub fn process_components(
     input: &str,
     _data: &Value,
 ) -> Result<String, String> {
-    // Quick check - no uppercase tags means no components
+    // skip work if no Component exists, also **recursive base case**
     if !might_contain_components(input) {
         return Ok(input.to_string());
     }
 
-    // Try to extract first component
     let Some(component) = extract_first_component(input)? else {
         return Ok(input.to_string());
     };
 
-    // Look up in registry
     let path = ctx
         .get_component_path(component.tag_name)
         .ok_or_else(|| format!("Component '{}' not registered", component.tag_name))?;
 
-    // Read the component template
     let template = ctx.read_template(path)?;
 
-    // Insert inner_content at <slot />
     let replacement = insert_slot_content(&template, component.inner_content)?;
 
-    // Rebuild and recurse to handle remaining components
     let result = format!("{}{}{}", component.before, replacement, component.after);
+    // recursively process all component tags
     process_components(ctx, &result, _data)
 }
 
+// note, see build_template.rs for feature tests
 #[cfg(test)]
 mod tests {
     use super::*;
