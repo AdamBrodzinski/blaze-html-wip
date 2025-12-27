@@ -63,14 +63,19 @@ pub fn process_layout(
     let (_, layout_content) = extract_layout_start_end(&layout_content_str)
         .map_err(|e| format!("Failed to parse layout template: {e}"))?;
 
-    Ok(format!(
-        "{}{}{}{}{}",
-        page_parts.before_layout_tag,
-        layout_content.before_layout_slot,
-        page_parts.inside_layout_tag,
-        layout_content.after_layout_slot,
-        page_parts.after_layout_tag
-    ))
+    let mut output = String::with_capacity(
+        page_parts.before_layout_tag.len()
+            + layout_content.before_layout_slot.len()
+            + page_parts.inside_layout_tag.len()
+            + layout_content.after_layout_slot.len()
+            + page_parts.after_layout_tag.len(),
+    );
+    output.push_str(page_parts.before_layout_tag);
+    output.push_str(layout_content.before_layout_slot);
+    output.push_str(page_parts.inside_layout_tag);
+    output.push_str(layout_content.after_layout_slot);
+    output.push_str(page_parts.after_layout_tag);
+    Ok(output)
 }
 
 fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
