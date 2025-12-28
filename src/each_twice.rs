@@ -1,11 +1,11 @@
 #![allow(unused)]
 
-type Document = Vec<Node>;
+type Document<'a> = Vec<Node<'a>>;
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Node {
-    Text(String),
-    EachTwo(Vec<Node>),
+pub enum Node<'a> {
+    Text(&'a str),
+    EachTwo(Vec<Node<'a>>),
 }
 
 use nom::branch::alt;
@@ -37,7 +37,7 @@ fn text_node(input: &str) -> IResult<&str, Node> {
     .parse(input)?;
     // note, this works and test passes, 196 nano seconds
     // let (input, matched) = take_till1(|c| c == '<').parse(input)?;
-    Ok((input, Node::Text(matched.to_owned())))
+    Ok((input, Node::Text(matched)))
 }
 
 fn open_each(input: &str) -> IResult<&str, &str> {
