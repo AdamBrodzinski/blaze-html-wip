@@ -68,6 +68,23 @@ fn bench_many_component(c: &mut Criterion) {
     });
 }
 
+fn bench_many_each(c: &mut Criterion) {
+    let blaze = setup();
+    // Generate data with 60 arrays, each containing 5 items
+    let mut data = serde_json::Map::new();
+    for i in 0..60 {
+        let items: Vec<serde_json::Value> = (0..5)
+            .map(|j| json!({"name": format!("Item{}_{}", i, j)}))
+            .collect();
+        data.insert(format!("items{}", i), serde_json::Value::Array(items));
+    }
+    let data = serde_json::Value::Object(data);
+
+    c.bench_function("many_each", |b| {
+        b.iter(|| blaze.render_page(black_box("bench/many_each.html"), black_box(&data)))
+    });
+}
+
 // fn bench_each_tag_simple(c: &mut Criterion) {
 //     let tmpl = "<each>Content to extract</each>";
 //     let data = json!(());
@@ -102,6 +119,7 @@ criterion_group!(
     bench_layout,
     bench_many_layout,
     bench_many_component,
-    bench_escaped_at_symbols
+    bench_escaped_at_symbols,
+    bench_many_each
 );
 criterion_main!(benches);
