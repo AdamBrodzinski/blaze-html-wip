@@ -5,6 +5,7 @@ use serde_json::json;
 fn setup() -> BlazeTemplate {
     BlazeTemplate::builder()
         .set_root_directory("test_files")
+        .register_component("Card", "components/card.html")
         .build()
 }
 
@@ -53,6 +54,20 @@ fn bench_many_layout(c: &mut Criterion) {
     });
 }
 
+fn bench_many_component(c: &mut Criterion) {
+    let blaze = setup();
+    let data = json!({"name": "Jane", "age": 30});
+
+    c.bench_function("many_component", |b| {
+        b.iter(|| {
+            blaze.render_page(
+                black_box("bench/with_many_component.html"),
+                black_box(&data),
+            )
+        })
+    });
+}
+
 // fn bench_each_tag_simple(c: &mut Criterion) {
 //     let tmpl = "<each>Content to extract</each>";
 //     let data = json!(());
@@ -86,6 +101,7 @@ criterion_group!(
     bench_deeply_nested_fields,
     bench_layout,
     bench_many_layout,
+    bench_many_component,
     bench_escaped_at_symbols
 );
 criterion_main!(benches);
