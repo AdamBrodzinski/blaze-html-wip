@@ -22,37 +22,29 @@ pub fn document(input: &str) -> IResult<&str, Vec<Node>> {
 }
 
 fn each_two(input: &str) -> IResult<&str, Node> {
-    // dbg!("ET--------------");
     let (input, _) = open_each(input)?;
     let (input, children) = document(input)?;
     let (input, matched) = close_each(input)?;
-    // dbg!(input);
-    // dbg!(matched);
     Ok((input, Node::EachTwo(children)))
 }
 
 fn text_node(input: &str) -> IResult<&str, Node> {
-    // dbg!("TN--------------");
-    // dbg!(input);
+    // note, this works and test passes, 6 micro seconds
     let (input, matched) = verify(
         alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
         |s: &str| !s.is_empty(),
     )
     .parse(input)?;
-    // note, this works and test passes
+    // note, this works and test passes, 196 nano seconds
     // let (input, matched) = take_till1(|c| c == '<').parse(input)?;
-    // dbg!(matched);
-    // dbg!(input);
     Ok((input, Node::Text(matched.to_owned())))
 }
 
 fn open_each(input: &str) -> IResult<&str, &str> {
-    // dbg!("OP--------------");
     tag("<each-two>").parse(input)
 }
 
 fn close_each(input: &str) -> IResult<&str, &str> {
-    // dbg!("CL--------------");
     tag("</each-two>").parse(input)
 }
 
@@ -83,8 +75,8 @@ mod tests {
         #[test]
         fn test_document_input() {
             let (remaining, nodes) = document("First <each-two>Inner</each-two> Last").unwrap();
-            dbg!(remaining);
-            dbg!(nodes);
+            // dbg!(remaining);
+            // dbg!(nodes);
             assert_eq!(remaining, "");
             // assert_eq!(nodes[0], Node::Text("First ".into()));
             // assert_eq!(&nodes[1], Node::Text("First ".into()));
