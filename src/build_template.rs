@@ -1,6 +1,7 @@
 use serde_json::Value;
 
 use crate::component::process_components;
+use crate::each::process_each;
 use crate::layout::process_layout;
 use crate::variables::process_variables;
 use crate::BlazeTemplate;
@@ -9,6 +10,7 @@ use crate::BlazeTemplate;
 pub fn build_template(ctx: &BlazeTemplate, input: &str, data: &Value) -> Result<String, String> {
     let input = process_components(ctx, input, data)?;
     let input = process_layout(ctx, &input, data)?;
+    let input = process_each(&input, data)?;
     let input = process_variables(&input, data)?;
     Ok(input)
 }
@@ -131,5 +133,40 @@ mod tests {
         let template = "<Card>@title</Card>";
         let result = build_template(&ctx, template, &data).unwrap();
         assert_eq!(result, "<div class=\"card\">Hello</div>\n");
+    }
+
+    #[test]
+    fn it_processes_each_with_variables() {
+        let ctx = setup_template_engine();
+        let data = json!({"people": [{"name": "Alice"}, {"name": "Bob"}]});
+        let template = r#"<ul><Each items="@people" as="p"><li>@p.name</li></Each></ul>"#;
+        let result = build_template(&ctx, template, &data).unwrap();
+        assert_eq!(result, "<ul><li>Alice</li><li>Bob</li></ul>");
+    }
+
+    #[test]
+    fn it_processes_each_with_index() {
+        let ctx = setup_template_engine();
+        let data = json!({"items": ["a", "b", "c"]});
+        let template = r#"<Each items="@items" as="x" idx="i">(@i) @x </Each>"#;
+        let result = build_template(&ctx, template, &data).unwrap();
+        assert_eq!(result, "(1) a (2) b (3) c ");
+    }
+
+    #[test]
+    fn it_processes_nested_each() {
+        let ctx = setup_template_engine();
+        let data = json!({
+            "groups": [
+                {"name": "Fruits", "items": [{"name": "Apple"}, {"name": "Banana"}]},
+                {"name": "Veggies", "items": [{"name": "Carrot"}]}
+            ]
+        });
+        let template = r#"<Each items="@groups" as="g"><h2>@g.name</h2><ul><Each items="@g.items" as="i"><li>@i.name</li></Each></ul></Each>"#;
+        let result = build_template(&ctx, template, &data).unwrap();
+        assert_eq!(
+            result,
+            "<h2>Fruits</h2><ul><li>Apple</li><li>Banana</li></ul><h2>Veggies</h2><ul><li>Carrot</li></ul>"
+        );
     }
 }
