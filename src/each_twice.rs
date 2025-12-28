@@ -34,13 +34,13 @@ fn each_two(input: &str) -> IResult<&str, Node> {
 fn text_node(input: &str) -> IResult<&str, Node> {
     // dbg!("TN--------------");
     // dbg!(input);
-    // let (input, matched) = verify(
-    //     alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
-    //     |s: &str| !s.is_empty(),
-    // )
-    // .parse(input)?;
+    let (input, matched) = verify(
+        alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
+        |s: &str| !s.is_empty(),
+    )
+    .parse(input)?;
     // note, this works and test passes
-    let (input, matched) = take_till1(|c| c == '<').parse(input)?;
+    // let (input, matched) = take_till1(|c| c == '<').parse(input)?;
     // dbg!(matched);
     // dbg!(input);
     Ok((input, Node::Text(matched.to_owned())))
