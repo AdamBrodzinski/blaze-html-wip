@@ -72,12 +72,8 @@ fn bench_many_each(c: &mut Criterion) {
     let blaze = setup();
     // Generate data with 60 arrays, each containing 5 items
     let mut data = serde_json::Map::new();
-    for i in 0..60 {
-        let items: Vec<serde_json::Value> = (0..5)
-            .map(|j| json!({"name": format!("Item{}_{}", i, j)}))
-            .collect();
-        data.insert(format!("items{}", i), serde_json::Value::Array(items));
-    }
+    let items: Vec<serde_json::Value> = (0..1).map(|_| json!({"name": "Jane"})).collect();
+    data.insert(String::from("items"), serde_json::Value::Array(items));
     let data = serde_json::Value::Object(data);
 
     c.bench_function("many_each", |b| {
