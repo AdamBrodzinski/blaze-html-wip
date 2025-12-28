@@ -68,6 +68,15 @@ fn bench_many_component(c: &mut Criterion) {
     });
 }
 
+fn bench_each_two(c: &mut Criterion) {
+    let blaze = setup();
+    let data = json!({"items": [{"name": "Jane"}]});
+
+    c.bench_function("each_two", |b| {
+        b.iter(|| blaze.render_page(black_box("bench/each_two.html"), black_box(&data)))
+    });
+}
+
 fn bench_many_each(c: &mut Criterion) {
     let blaze = setup();
     // Generate data with 60 arrays, each containing 1 item
@@ -115,12 +124,13 @@ fn bench_many_each(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_each_two,
+    bench_many_each,
+    bench_many_component,
     bench_simple_variables,
     bench_deeply_nested_fields,
     bench_layout,
     bench_many_layout,
-    bench_many_component,
     bench_escaped_at_symbols,
-    bench_many_each
 );
 criterion_main!(benches);
