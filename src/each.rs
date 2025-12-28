@@ -5,7 +5,7 @@ use nom::bytes::complete::{tag, take_till, take_until, take_while1};
 use nom::character::complete::{anychar, char, space0, space1};
 use nom::combinator::{not, opt, peek, recognize, rest};
 use nom::multi::{many0, many1};
-use nom::sequence::{preceded, tuple};
+use nom::sequence::preceded;
 use nom::IResult;
 use nom::Parser;
 use serde_json::Value;
@@ -93,7 +93,7 @@ fn text(input: &str) -> IResult<&str, Node> {
 
 fn parse_items_attribute(input: &str) -> IResult<&str, &str> {
     let (input, (_, _, _, _, value)) =
-        tuple((tag("items"), space0, char('='), space0, parse_quoted_value)).parse(input)?;
+        (tag("items"), space0, char('='), space0, parse_quoted_value).parse(input)?;
 
     Ok((input, value.strip_prefix('@').unwrap_or(value)))
 }
@@ -172,7 +172,7 @@ fn build_iteration_context(original: &Value, item: &Value, index: usize, tag: &E
 }
 
 fn process_nodes(nodes: &[Node], data: &Value) -> Result<String, String> {
-    let mut output = String::with_capacity(500 * 1024);
+    let mut output = String::new();
     for node in nodes {
         match node {
             Node::Text(txt) => {
