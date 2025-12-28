@@ -17,7 +17,7 @@ mod build_template;
 mod component;
 mod data;
 mod each;
-mod each_twice;
+pub mod each_twice;
 mod layout;
 mod parsers;
 mod template;

@@ -1,6 +1,25 @@
+use blaze_html::each_twice::document;
 use blaze_html::BlazeTemplate;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
+
+fn bench_single_each_tag(c: &mut Criterion) {
+    let input = "<each-two>Inner content</each-two>";
+
+    c.bench_function("single_each_tag", |b| b.iter(|| document(black_box(input))));
+}
+
+fn bench_sixty_each_tags(c: &mut Criterion) {
+    // Build a string with 60 each tags, each on a new line
+    let input: String = (0..60)
+        .map(|i| format!("<each-two>Content {}</each-two>", i))
+        .collect::<Vec<_>>()
+        .join("\n");
+
+    c.bench_function("sixty_each_tags", |b| {
+        b.iter(|| document(black_box(&input)))
+    });
+}
 
 fn setup() -> BlazeTemplate {
     BlazeTemplate::builder()
@@ -124,6 +143,8 @@ fn bench_many_each(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    bench_single_each_tag,
+    bench_sixty_each_tags,
     bench_each_two,
     bench_many_each,
     bench_many_component,

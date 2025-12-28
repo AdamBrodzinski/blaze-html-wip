@@ -3,7 +3,7 @@
 type Document = Vec<Node>;
 
 #[derive(Debug, PartialEq, Eq)]
-enum Node {
+pub enum Node {
     Text(String),
     EachTwo(Vec<Node>),
 }
@@ -17,23 +17,23 @@ fn node(input: &str) -> IResult<&str, Node> {
     alt((each_two, text_node)).parse(input)
 }
 
-fn document(input: &str) -> IResult<&str, Vec<Node>> {
+pub fn document(input: &str) -> IResult<&str, Vec<Node>> {
     nom::multi::many0(node).parse(input)
 }
 
 fn each_two(input: &str) -> IResult<&str, Node> {
-    dbg!("ET--------------");
+    // dbg!("ET--------------");
     let (input, _) = open_each(input)?;
     let (input, children) = document(input)?;
     let (input, matched) = close_each(input)?;
-    dbg!(input);
-    dbg!(matched);
+    // dbg!(input);
+    // dbg!(matched);
     Ok((input, Node::EachTwo(children)))
 }
 
 fn text_node(input: &str) -> IResult<&str, Node> {
-    dbg!("TN--------------");
-    dbg!(input);
+    // dbg!("TN--------------");
+    // dbg!(input);
     // let (input, matched) = verify(
     //     alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
     //     |s: &str| !s.is_empty(),
@@ -41,18 +41,18 @@ fn text_node(input: &str) -> IResult<&str, Node> {
     // .parse(input)?;
     // note, this works and test passes
     let (input, matched) = take_till1(|c| c == '<').parse(input)?;
-    dbg!(matched);
-    dbg!(input);
+    // dbg!(matched);
+    // dbg!(input);
     Ok((input, Node::Text(matched.to_owned())))
 }
 
 fn open_each(input: &str) -> IResult<&str, &str> {
-    dbg!("OP--------------");
+    // dbg!("OP--------------");
     tag("<each-two>").parse(input)
 }
 
 fn close_each(input: &str) -> IResult<&str, &str> {
-    dbg!("CL--------------");
+    // dbg!("CL--------------");
     tag("</each-two>").parse(input)
 }
 
@@ -99,4 +99,3 @@ mod tests {
         // }
     }
 }
-
