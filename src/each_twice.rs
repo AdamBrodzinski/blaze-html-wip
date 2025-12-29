@@ -30,13 +30,13 @@ fn each_two(input: &str) -> IResult<&str, Node> {
 
 fn text_node(input: &str) -> IResult<&str, Node> {
     // note, this works and test passes, 6 micro seconds
-    // let (input, matched) = verify(
-    //     alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
-    //     |s: &str| !s.is_empty(),
-    // )
-    // .parse(input)?;
+    let (input, matched) = verify(
+        alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
+        |s: &str| !s.is_empty(),
+    )
+    .parse(input)?;
     // note, this works and test passes, 196 nano seconds
-    let (input, matched) = take_till1(|c| c == '<').parse(input)?;
+    // let (input, matched) = take_till1(|c| c == '<').parse(input)?;
     Ok((input, Node::Text(matched)))
 }
 
@@ -55,19 +55,19 @@ mod tests {
 
     mod text {
         use super::*;
-        // #[test]
-        // fn text_and_each_tag() {
-        //     let (remaining, text) = text_node("foo <each-two>").unwrap();
-        //     assert_eq!(text, Node::Text("foo ".into()));
-        //     assert_eq!(remaining, "<each-two>");
-        // }
-        //
-        // #[test]
-        // fn text_only() {
-        //     let (remaining, text) = text_node("foo bar").unwrap();
-        //     assert_eq!(text, Node::Text("foo bar".into()));
-        //     assert_eq!(remaining, "");
-        // }
+        #[test]
+        fn text_and_each_tag() {
+            let (remaining, text) = text_node("foo <each-two>").unwrap();
+            assert_eq!(text, Node::Text("foo ".into()));
+            assert_eq!(remaining, "<each-two>");
+        }
+
+        #[test]
+        fn text_only() {
+            let (remaining, text) = text_node("foo bar").unwrap();
+            assert_eq!(text, Node::Text("foo bar".into()));
+            assert_eq!(remaining, "");
+        }
     }
     mod each_tag {
         use super::*;
@@ -81,11 +81,10 @@ mod tests {
         #[test]
         fn test_nested_document_input() {
             let (remaining, nodes) =
-                document("First <each-two>Inner1<each-two>Inner2</each-two></each-two> Last")
+                document("BeforeOuter<each-two>BeforeInner<each-two>Inner2</each-two>AfterInner</each-two> AfterOuter")
                     .unwrap();
-            // dbg!(remaining);
-            // dbg!(nodes);
-            assert_eq!(remaining, "x");
+            dbg!(nodes);
+            assert_eq!(remaining, "");
         }
 
         #[test]
@@ -94,25 +93,16 @@ mod tests {
                 "<b>First</b> <each-two>Inner1<each-two>Inner2</each-two></each-two> Last",
             )
             .unwrap();
-            // dbg!(remaining);
             dbg!(nodes);
             assert_eq!(remaining, "");
         }
-        //
-        // #[test]
-        // fn test_html_document_input() {
-        //     let (remaining, nodes) =
-        //         document("<b>First</b> <each-two>Inner</each-two> Last").unwrap();
-        //     dbg!(remaining);
-        //     dbg!(nodes);
-        //     assert_eq!(remaining, "x");
-        // }
 
-        // #[test]
-        // fn text_and_two_each_tags() {
-        //     let (remaining, text) = text("foo <each-two> bar <each-two>").unwrap();
-        //     assert_eq!(text, "foo ");
-        //     assert_eq!(remaining, "<each-two> bar <each-two>");
-        // }
+        #[test]
+        fn deep_nesting_with_text() {
+            let input = "<each-two>a<each-two>b<each-two>c</each-two>d</each-two>e</each-two>";
+            let (remaining, nodes) = document(input).unwrap();
+            dbg!(nodes, remaining);
+            assert_eq!(remaining, "d");
+        }
     }
 }
