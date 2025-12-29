@@ -30,13 +30,13 @@ fn each_two(input: &str) -> IResult<&str, Node> {
 
 fn text_node(input: &str) -> IResult<&str, Node> {
     // note, this works and test passes, 6 micro seconds
-    let (input, matched) = verify(
-        alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
-        |s: &str| !s.is_empty(),
-    )
-    .parse(input)?;
+    // let (input, matched) = verify(
+    //     alt((take_until("<each-two>"), take_until("</each-two>"), rest)),
+    //     |s: &str| !s.is_empty(),
+    // )
+    // .parse(input)?;
     // note, this works and test passes, 196 nano seconds
-    // let (input, matched) = take_till1(|c| c == '<').parse(input)?;
+    let (input, matched) = take_till1(|c| c == '<').parse(input)?;
     Ok((input, Node::Text(matched)))
 }
 
@@ -75,13 +75,38 @@ mod tests {
         #[test]
         fn test_document_input() {
             let (remaining, nodes) = document("First <each-two>Inner</each-two> Last").unwrap();
+            assert_eq!(remaining, "");
+        }
+
+        #[test]
+        fn test_nested_document_input() {
+            let (remaining, nodes) =
+                document("First <each-two>Inner1<each-two>Inner2</each-two></each-two> Last")
+                    .unwrap();
             // dbg!(remaining);
             // dbg!(nodes);
-            assert_eq!(remaining, "");
-            // assert_eq!(nodes[0], Node::Text("First ".into()));
-            // assert_eq!(&nodes[1], Node::Text("First ".into()));
-            // assert_eq!("", Node::EachTwo(()));
+            assert_eq!(remaining, "x");
         }
+
+        #[test]
+        fn test_nested_html_input() {
+            let (remaining, nodes) = document(
+                "<b>First</b> <each-two>Inner1<each-two>Inner2</each-two></each-two> Last",
+            )
+            .unwrap();
+            // dbg!(remaining);
+            dbg!(nodes);
+            assert_eq!(remaining, "");
+        }
+        //
+        // #[test]
+        // fn test_html_document_input() {
+        //     let (remaining, nodes) =
+        //         document("<b>First</b> <each-two>Inner</each-two> Last").unwrap();
+        //     dbg!(remaining);
+        //     dbg!(nodes);
+        //     assert_eq!(remaining, "x");
+        // }
 
         // #[test]
         // fn text_and_two_each_tags() {
