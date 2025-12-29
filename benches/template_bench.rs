@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
 
 fn bench_single_each_tag(c: &mut Criterion) {
-    let input = "<each-two>Inner content</each-two>";
+    let input = b"<each-two>Inner content</each-two>";
 
     c.bench_function("single_each_tag", |b| b.iter(|| document(black_box(input))));
 }
@@ -17,7 +17,7 @@ fn bench_sixty_each_tags(c: &mut Criterion) {
         .join("\n");
 
     c.bench_function("sixty_each_tags", |b| {
-        b.iter(|| document(black_box(&input)))
+        b.iter(|| document(black_box(input.as_bytes())))
     });
 }
 
