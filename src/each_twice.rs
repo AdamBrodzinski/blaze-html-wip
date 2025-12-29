@@ -14,11 +14,11 @@ pub enum Node<'a> {
     EachTwo(Vec<Node<'a>>),
 }
 
-fn node(input: &Bytes) -> IResult<&Bytes, Node> {
+fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
     alt((each_two, text_node)).parse(input)
 }
 
-pub fn document(input: &Bytes) -> IResult<&Bytes, Vec<Node>> {
+pub fn document(input: &'_ Bytes) -> IResult<&'_ Bytes, Vec<Node<'_>>> {
     nom::multi::many0(node).parse(input)
 }
 
@@ -33,26 +33,19 @@ fn text_node(input: &Bytes) -> IResult<&Bytes, Node> {
     use nom::error::{Error, ErrorKind};
     let len = input.len();
     let mut i = 0;
-
+    // manually parse text
     while i < len {
         if input[i] == b'<' {
-            // Remaining slice starting at '<'
             let rest = &input[i..];
-
-            // Check for opening or closing each-two
             if rest.starts_with(b"<each-two>") || rest.starts_with(b"</each-two>") {
                 break;
             }
-            // Otherwise, this is some other tag (<foo>, <div>, etc.)
-            // Treat '<' as normal text and continue scanning
         }
         i += 1;
     }
-
     if i == 0 {
         return Err(nom::Err::Error(Error::new(input, ErrorKind::TakeTill1)));
     }
-
     let (matched, rest) = input.split_at(i);
     Ok((rest, Node::Text(matched)))
 }
@@ -60,7 +53,11 @@ fn text_node(input: &Bytes) -> IResult<&Bytes, Node> {
 // fn text_node(input: &Bytes) -> IResult<&Bytes, Node> {
 //     // note, this works and test passes, 6 micro seconds
 //     let (input, matched) = verify(
-//         alt((take_until(b"<each-two>" as &Bytes), take_until(b"</each-two>" as &Bytes), rest)),
+//         alt((
+//             take_until(b"<each-two>" as &Bytes),
+//             take_until(b"</each-two>" as &Bytes),
+//             rest,
+//         )),
 //         |s: &Bytes| !s.is_empty(),
 //     )
 //     .parse(input)?;
