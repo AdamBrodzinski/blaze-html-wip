@@ -52,7 +52,7 @@ fn variable_key(input: &str) -> IResult<&str, &str> {
 }
 
 // parse the entire variable @foo and return the variable name foo
-fn variable(input: &str) -> IResult<&str, Part> {
+fn variable(input: &str) -> IResult<&str, Part<'_>> {
     // preceeded matches the @ + var_name then discards @ tag
     let (input, name) = preceded(tag("@"), variable_key).parse(input)?;
     Ok((input, Part::Var(name)))
@@ -60,7 +60,7 @@ fn variable(input: &str) -> IResult<&str, Part> {
 
 // ---------------------- escape ----------------------
 
-fn escaped(input: &str) -> IResult<&str, Part> {
+fn escaped(input: &str) -> IResult<&str, Part<'_>> {
     let (input, _) = tag("@@").parse(input)?;
     Ok((input, Part::Escaped))
 }
@@ -88,14 +88,14 @@ fn escape_html_into(s: &str, output: &mut String) {
 
 // ---------------------- text ----------------------
 
-fn text(input: &str) -> IResult<&str, Part> {
+fn text(input: &str) -> IResult<&str, Part<'_>> {
     let (input, txt) = take_till1(|c| c == '@').parse(input)?;
     Ok((input, Part::Text(txt)))
 }
 
 // ---------------------- template ----------------------
 
-fn parse_template(input: &str) -> IResult<&str, Vec<Part>> {
+fn parse_template(input: &str) -> IResult<&str, Vec<Part<'_>>> {
     // note, checks escaped before variable
     many0(alt((escaped, variable, text))).parse(input)
 }

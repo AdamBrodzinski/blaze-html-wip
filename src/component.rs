@@ -89,7 +89,7 @@ fn parse_text_until<'a>(input: &'a str, stop_tag: Option<&str>) -> IResult<&'a s
 }
 
 // Recursive component parser
-fn parse_component(input: &str) -> IResult<&str, Node> {
+fn parse_component(input: &str) -> IResult<&str, Node<'_>> {
     let (remaining, (tag_name, is_self_closing)) = parse_component_opening_tag(input)?;
 
     if is_self_closing {
@@ -176,7 +176,7 @@ fn slot_tag(input: &str) -> IResult<&str, ()> {
     .parse(input)
 }
 
-fn extract_slot_parts(input: &str) -> IResult<&str, SlotParts> {
+fn extract_slot_parts(input: &str) -> IResult<&str, SlotParts<'_>> {
     let (input, start) = recognize(many_till(anychar, peek(slot_tag))).parse(input)?;
     let (input, _) = slot_tag(input)?;
     let (input, end) = rest(input)?;

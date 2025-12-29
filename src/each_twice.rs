@@ -22,14 +22,14 @@ pub fn document(input: &'_ Bytes) -> IResult<&'_ Bytes, Vec<Node<'_>>> {
     nom::multi::many0(node).parse(input)
 }
 
-fn each_two(input: &Bytes) -> IResult<&Bytes, Node> {
+fn each_two(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     let (input, _) = open_each(input)?;
     let (input, children) = document(input)?;
     let (input, _) = close_each(input)?;
     Ok((input, Node::EachTwo(children)))
 }
 
-fn text_node(input: &Bytes) -> IResult<&Bytes, Node> {
+fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     use nom::error::{Error, ErrorKind};
     let len = input.len();
     let mut i = 0;

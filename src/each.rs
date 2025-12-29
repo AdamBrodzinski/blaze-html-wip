@@ -69,7 +69,7 @@ fn text_char(input: &str) -> IResult<&str, char> {
     Ok((&input[1..], '<'))
 }
 
-fn text(input: &str) -> IResult<&str, Node> {
+fn text(input: &str) -> IResult<&str, Node<'_>> {
     let (rest, txt) = take_till(|c| c == '<')(input)?;
 
     if txt.is_empty() {
@@ -114,7 +114,7 @@ fn parse_idx_attribute(input: &str) -> IResult<&str, &str> {
     parse_quoted_value(input)
 }
 
-fn parse_each_opening_tag(input: &str) -> IResult<&str, EachTag> {
+fn parse_each_opening_tag(input: &str) -> IResult<&str, EachTag<'_>> {
     let (input, _) = tag("<Each").parse(input)?;
     let (input, _) = space1(input)?;
     let (input, items_path) = parse_items_attribute(input)?;
@@ -136,7 +136,7 @@ fn parse_each_opening_tag(input: &str) -> IResult<&str, EachTag> {
 
 // ---------------------- Recursive Descent Parsers ----------------------
 
-fn each(input: &str) -> IResult<&str, Node> {
+fn each(input: &str) -> IResult<&str, Node<'_>> {
     let (input, tag_info) = parse_each_opening_tag(input)?;
     let (input, children) = many0(content).parse(input)?;
     let (input, _) = tag("</Each>").parse(input)?;
@@ -150,11 +150,11 @@ fn each(input: &str) -> IResult<&str, Node> {
     ))
 }
 
-fn content(input: &str) -> IResult<&str, Node> {
+fn content(input: &str) -> IResult<&str, Node<'_>> {
     alt((each, text)).parse(input)
 }
 
-fn parse_template(input: &str) -> IResult<&str, Vec<Node>> {
+fn parse_template(input: &str) -> IResult<&str, Vec<Node<'_>>> {
     many0(content).parse(input)
 }
 

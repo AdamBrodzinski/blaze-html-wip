@@ -78,7 +78,7 @@ pub fn process_layout(
     Ok(output)
 }
 
-fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
+fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier<'_>> {
     let (input, _) = tag("name").parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('=').parse(input)?;
@@ -87,7 +87,7 @@ fn parse_name_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, LayoutIdentifier::Name(value)))
 }
 
-fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
+fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier<'_>> {
     let (input, _) = tag("path").parse(input)?;
     let (input, _) = space0(input)?;
     let (input, _) = char('=').parse(input)?;
@@ -97,7 +97,7 @@ fn parse_path_attribute(input: &str) -> IResult<&str, LayoutIdentifier> {
 }
 
 // <Layout name='value'> or <Layout path='value'> opening tag
-fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
+fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier<'_>> {
     let (input, _) = tag("<Layout").parse(input)?;
     let (input, _) = space1(input)?;
     let (input, identifier) = alt((parse_name_attribute, parse_path_attribute)).parse(input)?;
@@ -106,7 +106,7 @@ fn parse_layout_opening_tag(input: &str) -> IResult<&str, LayoutIdentifier> {
     Ok((input, identifier))
 }
 
-fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
+fn extract_page_parts(input: &str) -> IResult<&str, PageParts<'_>> {
     let (input, before) = take_until("<Layout").parse(input)?;
     let (input, layout_identifier) = parse_layout_opening_tag(input)?;
     let (input, inner) = take_until("</Layout>").parse(input)?;
@@ -125,7 +125,7 @@ fn extract_page_parts(input: &str) -> IResult<&str, PageParts> {
 }
 
 // parse a layout template and handle slot
-fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent> {
+fn extract_layout_start_end(input: &str) -> IResult<&str, LayoutContent<'_>> {
     // everything up to (not including) where slot_tag starts
     let (input, start) = recognize(many_till(anychar, peek(slot_tag))).parse(input)?;
     let (input, _) = slot_tag(input)?;
