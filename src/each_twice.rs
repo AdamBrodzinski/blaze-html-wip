@@ -1,5 +1,10 @@
 #![allow(unused)]
 
+use nom::branch::alt;
+use nom::bytes::complete::{tag, take_till1, take_until};
+use nom::combinator::{rest, verify};
+use nom::{IResult, Parser};
+
 type Document<'a> = Vec<Node<'a>>;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -7,11 +12,6 @@ pub enum Node<'a> {
     Text(&'a str),
     EachTwo(Vec<Node<'a>>),
 }
-
-use nom::branch::alt;
-use nom::bytes::complete::{tag, take_till1, take_until};
-use nom::combinator::{rest, verify};
-use nom::{IResult, Parser};
 
 fn node(input: &str) -> IResult<&str, Node> {
     alt((each_two, text_node)).parse(input)
@@ -58,14 +58,14 @@ mod tests {
         #[test]
         fn text_and_each_tag() {
             let (remaining, text) = text_node("foo <each-two>").unwrap();
-            assert_eq!(text, Node::Text("foo ".into()));
+            assert_eq!(text, Node::Text("foo "));
             assert_eq!(remaining, "<each-two>");
         }
 
         #[test]
         fn text_only() {
             let (remaining, text) = text_node("foo bar").unwrap();
-            assert_eq!(text, Node::Text("foo bar".into()));
+            assert_eq!(text, Node::Text("foo bar"));
             assert_eq!(remaining, "");
         }
     }
@@ -102,7 +102,7 @@ mod tests {
             let input = "<each-two>a<each-two>b<each-two>c</each-two>d</each-two>e</each-two>";
             let (remaining, nodes) = document(input).unwrap();
             dbg!(nodes, remaining);
-            assert_eq!(remaining, "d");
+            assert_eq!(remaining, "");
         }
     }
 }
