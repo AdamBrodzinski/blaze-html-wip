@@ -3,7 +3,7 @@
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till1, take_until};
 use nom::combinator::{rest, verify};
-use nom::{IResult, Parser};
+use nom::{AsBytes, IResult, Parser};
 
 type Bytes = [u8];
 type Document<'a> = Vec<Node<'a>>;
@@ -11,41 +11,40 @@ type Document<'a> = Vec<Node<'a>>;
 #[derive(Debug, PartialEq, Eq)]
 pub enum Node<'a> {
     Text(&'a Bytes),
-    EachTwo(Vec<Node<'a>>),
+    Each(Vec<Node<'a>>),
 }
 
 fn process_each(input: &str) -> Result<String, String> {
-    let mut buffer = String::new();
+    let mut buffer: Vec<u8> = Vec::new();
     let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
 
+    do_process_each(&mut buffer, nodes);
+
+    String::from_utf8(buffer).map_err(|e| e.to_string())
+}
+
+fn do_process_each(buffer: &mut Vec<u8>, nodes: Vec<Node>) {
     for node in nodes {
-        dbg!(node);
         match node {
-            Text(txt) => {
-                buffer.push_str("Text");
-            }
-            EachTwo(txt) => {
-                buffer.push_str("Each");
-            }
+            Node::Text(txt) => buffer.extend_from_slice(txt),
+            Node::Each(children) => do_process_each(buffer, children),
         }
     }
-
-    Ok(String::from(""))
 }
 
 fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
-    alt((each_two, text_node)).parse(input)
+    alt((each_node, text_node)).parse(input)
 }
 
 pub fn document(input: &'_ Bytes) -> IResult<&'_ Bytes, Vec<Node<'_>>> {
     nom::multi::many0(node).parse(input)
 }
 
-fn each_two(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
+fn each_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     let (input, _) = open_each(input)?;
     let (input, children) = document(input)?;
     let (input, _) = close_each(input)?;
-    Ok((input, Node::EachTwo(children)))
+    Ok((input, Node::Each(children)))
 }
 
 fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
@@ -69,22 +68,6 @@ fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     Ok((rest, Node::Text(matched)))
 }
 
-// fn text_node(input: &Bytes) -> IResult<&Bytes, Node> {
-//     // note, this works and test passes, 6 micro seconds
-//     let (input, matched) = verify(
-//         alt((
-//             take_until(b"<Each>" as &Bytes),
-//             take_until(b"</Each>" as &Bytes),
-//             rest,
-//         )),
-//         |s: &Bytes| !s.is_empty(),
-//     )
-//     .parse(input)?;
-//     // note, this works and test passes, 196 nano seconds
-//     // let (input, matched) = take_till1(|c: u8| c == b'<').parse(input)?;
-//     Ok((input, Node::Text(matched)))
-// }
-
 fn open_each(input: &Bytes) -> IResult<&Bytes, &Bytes> {
     tag(b"<Each>" as &Bytes).parse(input)
 }
@@ -104,7 +87,7 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "foo");
+            assert_eq!(result, "First Inner Last");
         }
     }
 
@@ -130,7 +113,7 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "foo");
+            assert_eq!(result, "First Inner Last");
         }
 
         #[test]
