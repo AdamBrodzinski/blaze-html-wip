@@ -15,23 +15,22 @@ pub enum Node<'a> {
 }
 
 pub fn process_each(input: &str) -> Result<String, String> {
-    let bytes = input.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut i = 0;
-    while i < bytes.len() {
-        if bytes[i] == b'<' {
-            if bytes[i..].starts_with(b"<Each>") {
-                i += 6;
-                continue;
-            } else if bytes[i..].starts_with(b"</Each>") {
-                i += 7;
-                continue;
+    let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
+    let mut out = Vec::with_capacity(input.len());
+    render_nodes(&mut out, &nodes);
+    String::from_utf8(out).map_err(|e| e.to_string())
+}
+
+fn render_nodes(out: &mut Vec<u8>, nodes: &[Node]) {
+    for node in nodes {
+        match node {
+            Node::Text(txt) => out.extend_from_slice(txt),
+            Node::Each(children) => {
+                render_nodes(out, children);
+                render_nodes(out, children);
             }
         }
-        out.push(bytes[i]);
-        i += 1;
     }
-    String::from_utf8(out).map_err(|e| e.to_string())
 }
 
 pub fn document(input: &'_ Bytes) -> IResult<&'_ Bytes, Vec<Node<'_>>> {
@@ -53,7 +52,6 @@ fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     use nom::error::{Error, ErrorKind};
     let len = input.len();
     let mut i = 0;
-    // manually parse text
     while i < len {
         if input[i] == b'<' {
             let rest = &input[i..];
@@ -89,21 +87,30 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "First Inner Last");
+            assert_eq!(result, "First InnerInner Last");
         }
 
         #[test]
         fn test_nested_html_input() {
+            // Inner <Each>Inner2</Each> → Inner2Inner2
+            // Outer content: Inner1 + Inner2Inner2 = Inner1Inner2Inner2
+            // Doubled: Inner1Inner2Inner2Inner1Inner2Inner2
             let result =
                 process_each("<b>First</b> <Each>Inner1<Each>Inner2</Each></Each> Last").unwrap();
-            assert_eq!(result, "foo".to_string());
+            assert_eq!(
+                result,
+                "<b>First</b> Inner1Inner2Inner2Inner1Inner2Inner2 Last"
+            );
         }
 
         #[test]
         fn deep_nesting_with_text() {
+            // <Each>c</Each> → cc
+            // <Each>b + cc + d</Each> → bccdbccd
+            // <Each>a + bccdbccd + e</Each> → abccdbccdeabccdbccde
             let input = "<Each>a<Each>b<Each>c</Each>d</Each>e</Each>";
             let result = process_each(input).unwrap();
-            assert_eq!(result, "foo");
+            assert_eq!(result, "abccdbccdeabccdbccde");
         }
     }
 
@@ -129,7 +136,7 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "First Inner Last");
+            assert_eq!(result, "First InnerInner Last");
         }
 
         #[test]
