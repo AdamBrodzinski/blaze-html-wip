@@ -14,22 +14,25 @@ pub enum Node<'a> {
     Each(Vec<Node<'a>>),
 }
 
-pub fn process_each(input: &str) -> Result<String, String> {
-    let mut buffer: Vec<u8> = Vec::new();
-    let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
-
-    do_process_each(&mut buffer, nodes);
-
-    String::from_utf8(buffer).map_err(|e| e.to_string())
-}
-
-fn do_process_each(buffer: &mut Vec<u8>, nodes: Vec<Node>) {
-    for node in nodes {
-        match node {
-            Node::Text(txt) => buffer.extend_from_slice(txt),
-            Node::Each(children) => do_process_each(buffer, children),
+pub fn process_each(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'<' {
+            if bytes[i..].starts_with(b"<Each>") {
+                i += 6;
+                continue;
+            } else if bytes[i..].starts_with(b"</Each>") {
+                i += 7;
+                continue;
+            }
         }
+        out.push(bytes[i]);
+        i += 1;
     }
+    // TODO: refactor to result
+    String::from_utf8(out).map_err(|e| e.to_string()).unwrap()
 }
 
 fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
@@ -86,7 +89,7 @@ mod tests {
 
         #[test]
         fn test_process_each() {
-            let result = process_each("First <Each>Inner</Each> Last").unwrap();
+            let result = process_each("First <Each>Inner</Each> Last");
             assert_eq!(result, "First Inner Last");
         }
     }
@@ -112,7 +115,7 @@ mod tests {
 
         #[test]
         fn test_process_each() {
-            let result = process_each("First <Each>Inner</Each> Last").unwrap();
+            let result = process_each("First <Each>Inner</Each> Last");
             assert_eq!(result, "First Inner Last");
         }
 
