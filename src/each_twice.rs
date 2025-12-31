@@ -94,16 +94,16 @@ mod tests {
 
         #[test]
         fn test_nested_html_input() {
-            let (remaining, nodes) =
-                process_each(b"<b>First</b> <Each>Inner1<Each>Inner2</Each></Each> Last").unwrap();
-            assert_eq!(remaining, b"");
+            let result =
+                process_each("<b>First</b> <Each>Inner1<Each>Inner2</Each></Each> Last").unwrap();
+            assert_eq!(result, "foo".to_string());
         }
 
         #[test]
         fn deep_nesting_with_text() {
-            let input = b"<Each>a<Each>b<Each>c</Each>d</Each>e</Each>";
-            let (remaining, nodes) = process_each(input).unwrap();
-            assert_eq!(remaining, b"");
+            let input = "<Each>a<Each>b<Each>c</Each>d</Each>e</Each>";
+            let result = process_each(input).unwrap();
+            assert_eq!(result, "foo");
         }
     }
 
@@ -128,7 +128,7 @@ mod tests {
 
         #[test]
         fn test_process_each() {
-            let result = process_each("First <Each>Inner</Each> Last");
+            let result = process_each("First <Each>Inner</Each> Last").unwrap();
             assert_eq!(result, "First Inner Last");
         }
 
