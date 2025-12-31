@@ -9,7 +9,8 @@
       "Bash(cargo fmt:*)",
       "Bash(cargo check:*)",
       "Bash(mkdir:*)",
-      "Bash(mv:*)"
+      "Bash(mv:*)",
+      "Bash(wc:*)"
     ],
     "deny": []
   }

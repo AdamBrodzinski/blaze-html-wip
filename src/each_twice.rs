@@ -45,6 +45,7 @@ fn each_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     Ok((input, Node::Each(children)))
 }
 
+// optimize the text node case by manually parsing
 fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     use nom::error::{Error, ErrorKind};
     let len = input.len();
