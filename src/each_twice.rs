@@ -14,7 +14,7 @@ pub enum Node<'a> {
     Each(Vec<Node<'a>>),
 }
 
-pub fn process_each(input: &str) -> String {
+pub fn process_each(input: &str) -> Result<String, String> {
     let bytes = input.as_bytes();
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
@@ -31,16 +31,15 @@ pub fn process_each(input: &str) -> String {
         out.push(bytes[i]);
         i += 1;
     }
-    // TODO: refactor to result
-    String::from_utf8(out).map_err(|e| e.to_string()).unwrap()
-}
-
-fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
-    alt((each_node, text_node)).parse(input)
+    String::from_utf8(out).map_err(|e| e.to_string())
 }
 
 pub fn document(input: &'_ Bytes) -> IResult<&'_ Bytes, Vec<Node<'_>>> {
     nom::multi::many0(node).parse(input)
+}
+
+fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
+    alt((each_node, text_node)).parse(input)
 }
 
 fn each_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
@@ -89,8 +88,22 @@ mod tests {
 
         #[test]
         fn test_process_each() {
-            let result = process_each("First <Each>Inner</Each> Last");
+            let result = process_each("First <Each>Inner</Each> Last").unwrap();
             assert_eq!(result, "First Inner Last");
+        }
+
+        #[test]
+        fn test_nested_html_input() {
+            let (remaining, nodes) =
+                process_each(b"<b>First</b> <Each>Inner1<Each>Inner2</Each></Each> Last").unwrap();
+            assert_eq!(remaining, b"");
+        }
+
+        #[test]
+        fn deep_nesting_with_text() {
+            let input = b"<Each>a<Each>b<Each>c</Each>d</Each>e</Each>";
+            let (remaining, nodes) = process_each(input).unwrap();
+            assert_eq!(remaining, b"");
         }
     }
 
