@@ -14,7 +14,7 @@ pub enum Node<'a> {
     Each(Vec<Node<'a>>),
 }
 
-fn process_each(input: &str) -> Result<String, String> {
+pub fn process_each(input: &str) -> Result<String, String> {
     let mut buffer: Vec<u8> = Vec::new();
     let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
 
