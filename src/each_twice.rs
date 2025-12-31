@@ -25,10 +25,7 @@ fn render_nodes(out: &mut Vec<u8>, nodes: &[Node]) {
     for node in nodes {
         match node {
             Node::Text(txt) => out.extend_from_slice(txt),
-            Node::Each(children) => {
-                render_nodes(out, children);
-                render_nodes(out, children);
-            }
+            Node::Each(children) => render_nodes(out, children),
         }
     }
 }
@@ -87,30 +84,21 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "First InnerInner Last");
+            assert_eq!(result, "First Inner Last");
         }
 
         #[test]
         fn test_nested_html_input() {
-            // Inner <Each>Inner2</Each> → Inner2Inner2
-            // Outer content: Inner1 + Inner2Inner2 = Inner1Inner2Inner2
-            // Doubled: Inner1Inner2Inner2Inner1Inner2Inner2
             let result =
                 process_each("<b>First</b> <Each>Inner1<Each>Inner2</Each></Each> Last").unwrap();
-            assert_eq!(
-                result,
-                "<b>First</b> Inner1Inner2Inner2Inner1Inner2Inner2 Last"
-            );
+            assert_eq!(result, "<b>First</b> Inner1Inner2 Last");
         }
 
         #[test]
         fn deep_nesting_with_text() {
-            // <Each>c</Each> → cc
-            // <Each>b + cc + d</Each> → bccdbccd
-            // <Each>a + bccdbccd + e</Each> → abccdbccdeabccdbccde
             let input = "<Each>a<Each>b<Each>c</Each>d</Each>e</Each>";
             let result = process_each(input).unwrap();
-            assert_eq!(result, "abccdbccdeabccdbccde");
+            assert_eq!(result, "abcde");
         }
     }
 
@@ -136,7 +124,7 @@ mod tests {
         #[test]
         fn test_process_each() {
             let result = process_each("First <Each>Inner</Each> Last").unwrap();
-            assert_eq!(result, "First InnerInner Last");
+            assert_eq!(result, "First Inner Last");
         }
 
         #[test]
