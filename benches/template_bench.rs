@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
 
 fn bench_single_each_tag(c: &mut Criterion) {
-    let input = b"<each-two>Inner content</each-two>";
+    let input = br#"<Each items="@items">Inner content</Each>"#;
 
     c.bench_function("single_each_tag", |b| b.iter(|| document(black_box(input))));
 }
@@ -12,7 +12,7 @@ fn bench_single_each_tag(c: &mut Criterion) {
 fn bench_sixty_each_tags(c: &mut Criterion) {
     // Build a string with 60 each tags, each on a new line
     let input: String = (0..60)
-        .map(|i| format!("<each-two>Content {}</each-two>", i))
+        .map(|i| format!(r#"<Each items="@items{i}">Content {i}</Each>"#))
         .collect::<Vec<_>>()
         .join("\n");
 
@@ -24,12 +24,19 @@ fn bench_sixty_each_tags(c: &mut Criterion) {
 fn bench_process_sixty_each_tags(c: &mut Criterion) {
     // Build a page template with 60 each tags
     let input: String = (0..60)
-        .map(|i| format!("<Each>Content {}</Each>", i))
+        .map(|i| format!(r#"<Each items="@items{i}">@i Content {i}</Each>"#))
         .collect::<Vec<_>>()
         .join("\n");
 
+    // Build data with 60 arrays
+    let mut data = serde_json::Map::new();
+    for i in 0..60 {
+        data.insert(format!("items{i}"), json!([1, 2, 3]));
+    }
+    let data = serde_json::Value::Object(data);
+
     c.bench_function("process_sixty_each_tags", |b| {
-        b.iter(|| process_each(black_box(&input)))
+        b.iter(|| process_each(black_box(&input), black_box(&data)))
     });
 }
 
