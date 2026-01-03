@@ -18,6 +18,8 @@ pub enum Node<'a> {
     Text(&'a Bytes),
     Each {
         items_path: &'a str,
+        item_name: &'a str,
+        index_name: &'a str,
         children: Vec<Node<'a>>,
     },
 }
@@ -30,12 +32,20 @@ pub fn process_each(input: &str, data: &Value) -> Result<String, String> {
 }
 
 // TODO: does this have global access or scoped to item?
-// TODO: replace 'i' with any str
-fn build_iteration_context(original: &Value, item: &Value, index: usize) -> Value {
+fn build_iteration_context(
+    original: &Value,
+    item: &Value,
+    index: usize,
+    item_name: &str,
+    index_name: &str,
+) -> Value {
     let mut ctx = original.clone();
     if let Value::Object(ref mut map) = ctx {
-        map.insert("item".to_string(), item.clone());
-        map.insert("i".to_string(), Value::Number(index.into()));
+        map.insert(item_name.to_string(), item.clone());
+        // Only insert index if it doesn't shadow the item name
+        if index_name != item_name {
+            map.insert(index_name.to_string(), Value::Number(index.into()));
+        }
     }
     ctx
 }
@@ -44,14 +54,16 @@ fn render_nodes(
     out: &mut Vec<u8>,
     nodes: &[Node],
     data: &Value,
-    current_item: Option<(&Value, usize)>, // (item, 1-based index)
+    current_item: Option<(&Value, usize, &str, &str)>, // (item, 1-based index, item_name, index_name)
 ) -> Result<(), String> {
     for node in nodes {
         match node {
             Node::Text(txt) => {
                 let text = std::str::from_utf8(txt).map_err(|e| e.to_string())?;
                 let ctx = match current_item {
-                    Some((item, idx)) => build_iteration_context(data, item, idx),
+                    Some((item, idx, item_name, index_name)) => {
+                        build_iteration_context(data, item, idx, item_name, index_name)
+                    }
                     None => data.clone(),
                 };
                 let processed = process_variables(text, &ctx)?;
@@ -59,16 +71,37 @@ fn render_nodes(
             }
             Node::Each {
                 items_path,
+                item_name,
+                index_name,
                 children,
             } => {
-                let array_value = get_json_value(data, items_path)?;
+                // Build context with current item to support nested Each accessing parent's item
+                let ctx = match current_item {
+                    Some((item, idx, parent_item_name, parent_index_name)) => {
+                        build_iteration_context(
+                            data,
+                            item,
+                            idx,
+                            parent_item_name,
+                            parent_index_name,
+                        )
+                    }
+                    None => data.clone(),
+                };
+
+                let array_value = get_json_value(&ctx, items_path)?;
                 let array = match array_value {
                     Value::Array(arr) => arr,
                     _ => return Err(format!("'{}' is not an array", items_path)),
                 };
 
                 for (idx, item) in array.iter().enumerate() {
-                    render_nodes(out, children, data, Some((item, idx + 1)))?; // 1-based index
+                    render_nodes(
+                        out,
+                        children,
+                        &ctx,
+                        Some((item, idx + 1, item_name, index_name)),
+                    )?;
                 }
             }
         }
@@ -85,13 +118,15 @@ fn node(input: &'_ Bytes) -> IResult<&'_ Bytes, Node<'_>> {
 }
 
 fn each_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
-    let (input, items_path) = open_each(input)?;
+    let (input, (items_path, item_name, index_name)) = open_each(input)?;
     let (input, children) = document(input)?;
     let (input, _) = close_each(input)?;
     Ok((
         input,
         Node::Each {
             items_path,
+            item_name,
+            index_name,
             children,
         },
     ))
@@ -119,8 +154,9 @@ fn text_node(input: &Bytes) -> IResult<&Bytes, Node<'_>> {
     Ok((rest, Node::Text(matched)))
 }
 
-/// Parses `<Each items="@path">` and returns the path (without @ prefix)
-fn open_each(input: &Bytes) -> IResult<&Bytes, &str> {
+/// Parses `<Each items="@path" as="item_name" idx="index_name">`
+/// Returns (items_path, item_name, index_name). `as` and `idx` are optional, defaulting to "item" and "i".
+fn open_each(input: &Bytes) -> IResult<&Bytes, (&str, &str, &str)> {
     use nom::error::{Error, ErrorKind};
 
     // Parse <Each
@@ -132,7 +168,40 @@ fn open_each(input: &Bytes) -> IResult<&Bytes, &str> {
     // Parse items=
     let (input, _) = tag(b"items=" as &Bytes).parse(input)?;
 
-    // Parse quoted value (single or double quotes)
+    // Parse items value
+    let (input, items_path) = parse_quoted_value(input)?;
+    let items_path = items_path.strip_prefix('@').unwrap_or(items_path);
+
+    let input = skip_spaces(input);
+
+    // Parse optional as="..."
+    let (input, item_name) = if input.starts_with(b"as=") {
+        let (input, _) = tag(b"as=" as &Bytes).parse(input)?;
+        let (input, val) = parse_quoted_value(input)?;
+        (skip_spaces(input), val)
+    } else {
+        (input, "item")
+    };
+
+    // Parse optional idx="..."
+    let (input, index_name) = if input.starts_with(b"idx=") {
+        let (input, _) = tag(b"idx=" as &Bytes).parse(input)?;
+        let (input, val) = parse_quoted_value(input)?;
+        (skip_spaces(input), val)
+    } else {
+        (input, "i")
+    };
+
+    // Parse closing >
+    let (rest, _) = tag(b">" as &Bytes).parse(input)?;
+
+    Ok((rest, (items_path, item_name, index_name)))
+}
+
+/// Parses a quoted value (single or double quotes) and returns the inner string
+fn parse_quoted_value(input: &Bytes) -> IResult<&Bytes, &str> {
+    use nom::error::{Error, ErrorKind};
+
     let quote_char = input
         .first()
         .ok_or_else(|| nom::Err::Error(Error::new(input, ErrorKind::Char)))?;
@@ -152,17 +221,10 @@ fn open_each(input: &Bytes) -> IResult<&Bytes, &str> {
     let (value, rest) = input.split_at(close_pos);
     let (rest, _) = tag(&[*quote_char][..]).parse(rest)?;
 
-    // Skip optional whitespace and closing >
-    let rest = skip_spaces(rest);
-    let (rest, _) = tag(b">" as &Bytes).parse(rest)?;
-
-    // Convert value to str and strip @ prefix
     let value_str = std::str::from_utf8(value)
         .map_err(|_| nom::Err::Error(Error::new(input, ErrorKind::Char)))?;
 
-    let path = value_str.strip_prefix('@').unwrap_or(value_str);
-
-    Ok((rest, path))
+    Ok((rest, value_str))
 }
 
 fn skip_spaces(input: &Bytes) -> &Bytes {
@@ -302,23 +364,95 @@ mod tests {
 
         #[test]
         fn parses_items_double_quotes() {
-            let (remaining, path) = open_each(b"<Each items=\"@people\">rest").unwrap();
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items=\"@people\">rest").unwrap();
             assert_eq!(path, "people");
+            assert_eq!(item_name, "item");
+            assert_eq!(index_name, "i");
             assert_eq!(remaining, b"rest");
         }
 
         #[test]
         fn parses_items_single_quotes() {
-            let (remaining, path) = open_each(b"<Each items='@users'>rest").unwrap();
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items='@users'>rest").unwrap();
             assert_eq!(path, "users");
+            assert_eq!(item_name, "item");
+            assert_eq!(index_name, "i");
             assert_eq!(remaining, b"rest");
         }
 
         #[test]
         fn parses_nested_path() {
-            let (remaining, path) = open_each(b"<Each items=\"@data.items\">rest").unwrap();
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items=\"@data.items\">rest").unwrap();
             assert_eq!(path, "data.items");
+            assert_eq!(item_name, "item");
+            assert_eq!(index_name, "i");
             assert_eq!(remaining, b"rest");
+        }
+
+        #[test]
+        fn parses_as_attribute() {
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items=\"@people\" as=\"person\">rest").unwrap();
+            assert_eq!(path, "people");
+            assert_eq!(item_name, "person");
+            assert_eq!(index_name, "i");
+            assert_eq!(remaining, b"rest");
+        }
+
+        #[test]
+        fn parses_idx_attribute() {
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items=\"@people\" idx=\"j\">rest").unwrap();
+            assert_eq!(path, "people");
+            assert_eq!(item_name, "item");
+            assert_eq!(index_name, "j");
+            assert_eq!(remaining, b"rest");
+        }
+
+        #[test]
+        fn parses_as_and_idx_attributes() {
+            let (remaining, (path, item_name, index_name)) =
+                open_each(b"<Each items=\"@people\" as=\"person\" idx=\"j\">rest").unwrap();
+            assert_eq!(path, "people");
+            assert_eq!(item_name, "person");
+            assert_eq!(index_name, "j");
+            assert_eq!(remaining, b"rest");
+        }
+    }
+
+    mod process_as_idx {
+        use super::*;
+
+        #[test]
+        fn custom_item_name() {
+            let data = json!({"people": [{"name": "Alice"}, {"name": "Bob"}]});
+            let result = process_each(
+                r#"<Each items="@people" as="person">@person.name,</Each>"#,
+                &data,
+            )
+            .unwrap();
+            assert_eq!(result, "Alice,Bob,");
+        }
+
+        #[test]
+        fn custom_index_name() {
+            let data = json!({"items": [1, 2, 3]});
+            let result = process_each(r#"<Each items="@items" idx="j">@j </Each>"#, &data).unwrap();
+            assert_eq!(result, "1 2 3 ");
+        }
+
+        #[test]
+        fn custom_item_and_index() {
+            let data = json!({"people": [{"name": "Alice"}, {"name": "Bob"}]});
+            let result = process_each(
+                r#"<ul><Each items="@people" as="person" idx="j"><li>(@j) @person.name</li></Each></ul>"#,
+                &data,
+            )
+            .unwrap();
+            assert_eq!(result, "<ul><li>(1) Alice</li><li>(2) Bob</li></ul>");
         }
     }
 }
