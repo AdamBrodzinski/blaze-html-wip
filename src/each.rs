@@ -29,6 +29,8 @@ pub fn process_each(input: &str, data: &Value) -> Result<String, String> {
     String::from_utf8(out).map_err(|e| e.to_string())
 }
 
+// TODO: does this have global access or scoped to item?
+// TODO: replace 'i' with any str
 fn build_iteration_context(original: &Value, item: &Value, index: usize) -> Value {
     let mut ctx = original.clone();
     if let Value::Object(ref mut map) = ctx {
