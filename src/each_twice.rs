@@ -8,6 +8,7 @@ use nom::{AsBytes, IResult, Parser};
 use serde_json::Value;
 
 use crate::data::get_json_value;
+use crate::variables::process_variables;
 
 type Bytes = [u8];
 type Document<'a> = Vec<Node<'a>>;
@@ -22,34 +23,37 @@ pub enum Node<'a> {
 }
 
 pub fn process_each(input: &str, data: &Value) -> Result<String, String> {
-    // Quick check for <Each tag
-    if !input.contains("<Each") {
-        return Ok(input.to_string());
-    }
-
     let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
     let mut out = Vec::with_capacity(input.len());
     render_nodes(&mut out, &nodes, data, None)?;
     String::from_utf8(out).map_err(|e| e.to_string())
 }
 
+fn build_iteration_context(original: &Value, item: &Value, index: usize) -> Value {
+    let mut ctx = original.clone();
+    if let Value::Object(ref mut map) = ctx {
+        map.insert("item".to_string(), item.clone());
+        map.insert("i".to_string(), Value::Number(index.into()));
+    }
+    ctx
+}
+
 fn render_nodes(
     out: &mut Vec<u8>,
     nodes: &[Node],
     data: &Value,
-    current_index: Option<usize>,
+    current_item: Option<(&Value, usize)>, // (item, 1-based index)
 ) -> Result<(), String> {
     for node in nodes {
         match node {
             Node::Text(txt) => {
-                if let Some(idx) = current_index {
-                    // Replace @i with the current index
-                    let text = std::str::from_utf8(txt).map_err(|e| e.to_string())?;
-                    let replaced = text.replace("@i", &idx.to_string());
-                    out.extend_from_slice(replaced.as_bytes());
-                } else {
-                    out.extend_from_slice(txt);
-                }
+                let text = std::str::from_utf8(txt).map_err(|e| e.to_string())?;
+                let ctx = match current_item {
+                    Some((item, idx)) => build_iteration_context(data, item, idx),
+                    None => data.clone(),
+                };
+                let processed = process_variables(text, &ctx)?;
+                out.extend_from_slice(processed.as_bytes());
             }
             Node::Each {
                 items_path,
@@ -61,8 +65,8 @@ fn render_nodes(
                     _ => return Err(format!("'{}' is not an array", items_path)),
                 };
 
-                for (idx, _item) in array.iter().enumerate() {
-                    render_nodes(out, children, data, Some(idx + 1))?; // 1-based index
+                for (idx, item) in array.iter().enumerate() {
+                    render_nodes(out, children, data, Some((item, idx + 1)))?; // 1-based index
                 }
             }
         }
@@ -180,6 +184,13 @@ mod tests {
         use super::*;
 
         #[test]
+        fn template_without_each() {
+            let data = json!({"items": [1, 2, 3]});
+            let result = process_each(r#"<div>Foo</div>"#, &data).unwrap();
+            assert_eq!(result, "<div>Foo</div>");
+        }
+
+        #[test]
         fn basic_index_substitution() {
             let data = json!({"items": [1, 2, 3]});
             let result = process_each(r#"<Each items="@items">@i </Each>"#, &data).unwrap();
@@ -241,6 +252,28 @@ mod tests {
             let data = json!({"items": "not an array"});
             let result = process_each(r#"<Each items="@items">@i</Each>"#, &data);
             assert!(result.is_err());
+        }
+
+        #[test]
+        fn item_access_primitives() {
+            let data = json!({"items": ["Alice", "Bob"]});
+            let result = process_each(r#"<Each items="@items">@item,</Each>"#, &data).unwrap();
+            assert_eq!(result, "Alice,Bob,");
+        }
+
+        #[test]
+        fn item_access_objects() {
+            let data = json!({"people": [{"name": "Alice"}, {"name": "Bob"}]});
+            let result =
+                process_each(r#"<Each items="@people">@item.name,</Each>"#, &data).unwrap();
+            assert_eq!(result, "Alice,Bob,");
+        }
+
+        #[test]
+        fn item_and_index_together() {
+            let data = json!({"items": ["a", "b", "c"]});
+            let result = process_each(r#"<Each items="@items">@i:@item </Each>"#, &data).unwrap();
+            assert_eq!(result, "1:a 2:b 3:c ");
         }
     }
 
