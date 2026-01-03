@@ -2,14 +2,12 @@ use serde_json::Value;
 
 use crate::component::process_components;
 use crate::each::process_each;
-use crate::layout::process_layout;
 use crate::variables::process_variables;
 use crate::BlazeTemplate;
 
 // composes many parsers together to buildup template
 pub fn build_template(ctx: &BlazeTemplate, input: &str, data: &Value) -> Result<String, String> {
     let input = process_components(ctx, input, data)?;
-    let input = process_layout(ctx, &input, data)?;
     let input = process_each(&input, data)?;
     let input = process_variables(&input, data)?;
     Ok(input)
@@ -46,15 +44,6 @@ mod tests {
         let template = "@greeting @person.name";
         let result = build_template(&ctx, template, &data).unwrap();
         assert_eq!(result, "Hello Jane");
-    }
-
-    #[test]
-    fn it_transforms_simple_layout() {
-        let ctx = setup_template_engine();
-        let data = json!({"greeting": "Hello", "head": {"name": "Home"}});
-        let page_tmpl = "<Layout path='layouts/vars.html'>@greeting</Layout>";
-        let result = build_template(&ctx, page_tmpl, &data).unwrap();
-        assert_eq!(result, "Header Home Hello Footer\n");
     }
 
     fn setup_with_components() -> BlazeTemplate {
