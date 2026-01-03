@@ -1,4 +1,4 @@
-use blaze_html::each_twice::{document, process_each};
+use blaze_html::each::{document, process_each};
 use blaze_html::BlazeTemplate;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use serde_json::json;
@@ -65,30 +65,12 @@ fn bench_deeply_nested_fields(c: &mut Criterion) {
     });
 }
 
-fn bench_layout(c: &mut Criterion) {
-    let blaze = setup();
-    let data = json!({"name": "Jane", "age": 30});
-
-    c.bench_function("layout", |b| {
-        b.iter(|| blaze.render_page(black_box("bench/with_layout.html"), black_box(&data)))
-    });
-}
-
 fn bench_escaped_at_symbols(c: &mut Criterion) {
     let blaze = setup();
     let data = json!({});
 
     c.bench_function("escaped_at_symbols", |b| {
         b.iter(|| blaze.render_page(black_box("bench/escaped.html"), black_box(&data)))
-    });
-}
-
-fn bench_many_layout(c: &mut Criterion) {
-    let blaze = setup();
-    let data = json!({"name": "Jane", "age": 30});
-
-    c.bench_function("many_layout", |b| {
-        b.iter(|| blaze.render_page(black_box("bench/with_many_layout.html"), black_box(&data)))
     });
 }
 
@@ -170,8 +152,6 @@ criterion_group!(
     bench_many_component,
     bench_simple_variables,
     bench_deeply_nested_fields,
-    bench_layout,
-    bench_many_layout,
     bench_escaped_at_symbols,
 );
 criterion_main!(benches);
