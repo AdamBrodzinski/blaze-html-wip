@@ -13,6 +13,7 @@
 // do_foo();
 // ```
 
+mod ast;
 mod build_template;
 mod component;
 mod data;

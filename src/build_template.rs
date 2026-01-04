@@ -1,16 +1,14 @@
 use serde_json::Value;
 
-use crate::component::process_components;
-use crate::each::process_each;
-use crate::variables::process_variables;
+use crate::ast::{parse_template, render};
+use crate::each::ScopeChain;
 use crate::BlazeTemplate;
 
-// composes many parsers together to buildup template
+/// Parse and render a template in a single pass
 pub fn build_template(ctx: &BlazeTemplate, input: &str, data: &Value) -> Result<String, String> {
-    let input = process_components(ctx, input, data)?;
-    let input = process_each(&input, data)?;
-    let input = process_variables(&input, data)?;
-    Ok(input)
+    let (_, nodes) = parse_template(input).map_err(|e| e.to_string())?;
+    let mut scope = ScopeChain::new(data);
+    render(&nodes, ctx, &mut scope)
 }
 
 /// tests the integration of template parsers to ensure they work as expected

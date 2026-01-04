@@ -25,15 +25,17 @@ pub enum Node<'a> {
 
 // ==================== Scope Chain ====================
 
+use std::borrow::Cow;
+
 /// A single scope layer in the lookup chain
 pub enum ScopeLayer<'a> {
     /// Reference to existing JSON data (e.g., the root context)
     Ref(&'a Value),
     /// An iteration scope with item reference and owned index
     Iteration {
-        item_name: &'a str,
+        item_name: Cow<'a, str>,
         item: &'a Value,
-        index_name: &'a str,
+        index_name: Cow<'a, str>,
         index: usize,
     },
 }
@@ -57,7 +59,7 @@ impl<'a> ScopeChain<'a> {
         }
     }
 
-    /// Push an iteration scope
+    /// Push an iteration scope with borrowed names
     pub fn push_iteration(
         &mut self,
         item_name: &'a str,
@@ -66,9 +68,25 @@ impl<'a> ScopeChain<'a> {
         index: usize,
     ) {
         self.layers.push(ScopeLayer::Iteration {
-            item_name,
+            item_name: Cow::Borrowed(item_name),
             item,
-            index_name,
+            index_name: Cow::Borrowed(index_name),
+            index,
+        });
+    }
+
+    /// Push an iteration scope with owned names (for component templates)
+    pub fn push_iteration_owned(
+        &mut self,
+        item_name: &str,
+        item: &'a Value,
+        index_name: &str,
+        index: usize,
+    ) {
+        self.layers.push(ScopeLayer::Iteration {
+            item_name: Cow::Owned(item_name.to_string()),
+            item,
+            index_name: Cow::Owned(index_name.to_string()),
             index,
         });
     }
@@ -95,7 +113,7 @@ impl<'a> ScopeChain<'a> {
                     index,
                 } => {
                     // Check if first segment matches item name
-                    if first_segment == *item_name {
+                    if first_segment == item_name.as_ref() {
                         return match rest {
                             Some(nested_key) => {
                                 get_json_value(item, nested_key).map(ValueRef::Borrowed)
@@ -104,7 +122,7 @@ impl<'a> ScopeChain<'a> {
                         };
                     }
                     // Check if it's the index variable (only if no nested path)
-                    if first_segment == *index_name && rest.is_none() {
+                    if first_segment == index_name.as_ref() && rest.is_none() {
                         return Ok(ValueRef::Index(*index));
                     }
                 }
