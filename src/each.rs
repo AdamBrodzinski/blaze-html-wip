@@ -158,9 +158,7 @@ fn render_nodes<'a>(
                     _ => return Err(format!("'{}' is not an array", items_path)),
                 };
 
-                // Clone the array reference to avoid borrow issues
-                let items: Vec<_> = array.iter().collect();
-                for (idx, item) in items.into_iter().enumerate() {
+                for (idx, item) in array.iter().enumerate() {
                     scope.push_iteration(item_name, item, index_name, idx + 1);
                     render_nodes(out, children, scope)?;
                     scope.pop();
