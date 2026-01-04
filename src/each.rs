@@ -8,7 +8,6 @@ use nom::{AsBytes, IResult, Parser};
 use serde_json::Value;
 
 use crate::data::get_json_value;
-use crate::variables::process_variables;
 
 type Bytes = [u8];
 type Document<'a> = Vec<Node<'a>>;
@@ -24,49 +23,127 @@ pub enum Node<'a> {
     },
 }
 
+// ==================== Scope Chain ====================
+
+/// A single scope layer in the lookup chain
+pub enum ScopeLayer<'a> {
+    /// Reference to existing JSON data (e.g., the root context)
+    Ref(&'a Value),
+    /// An iteration scope with item reference and owned index
+    Iteration {
+        item_name: &'a str,
+        item: &'a Value,
+        index_name: &'a str,
+        index: usize,
+    },
+}
+
+/// The scope chain holds a stack of scope layers
+/// Lookups search from top (most recent) to bottom (root)
+pub struct ScopeChain<'a> {
+    layers: Vec<ScopeLayer<'a>>,
+}
+
+/// Return type for scope lookups - handles both borrowed and computed values
+pub enum ValueRef<'a> {
+    Borrowed(&'a Value),
+    Index(usize),
+}
+
+impl<'a> ScopeChain<'a> {
+    pub fn new(root: &'a Value) -> Self {
+        Self {
+            layers: vec![ScopeLayer::Ref(root)],
+        }
+    }
+
+    /// Push an iteration scope
+    pub fn push_iteration(
+        &mut self,
+        item_name: &'a str,
+        item: &'a Value,
+        index_name: &'a str,
+        index: usize,
+    ) {
+        self.layers.push(ScopeLayer::Iteration {
+            item_name,
+            item,
+            index_name,
+            index,
+        });
+    }
+
+    pub fn pop(&mut self) {
+        self.layers.pop();
+    }
+
+    /// Look up a key in the scope chain (newest to oldest)
+    pub fn get(&self, key: &str) -> Result<ValueRef<'a>, String> {
+        // Split key into first segment and rest (e.g., "item.name" -> "item", "name")
+        let (first_segment, rest) = match key.find('.') {
+            Some(pos) => (&key[..pos], Some(&key[pos + 1..])),
+            None => (key, None),
+        };
+
+        // Search from top to bottom (newest scope first)
+        for layer in self.layers.iter().rev() {
+            match layer {
+                ScopeLayer::Iteration {
+                    item_name,
+                    item,
+                    index_name,
+                    index,
+                } => {
+                    // Check if first segment matches item name
+                    if first_segment == *item_name {
+                        return match rest {
+                            Some(nested_key) => {
+                                get_json_value(item, nested_key).map(ValueRef::Borrowed)
+                            }
+                            None => Ok(ValueRef::Borrowed(item)),
+                        };
+                    }
+                    // Check if it's the index variable (only if no nested path)
+                    if first_segment == *index_name && rest.is_none() {
+                        return Ok(ValueRef::Index(*index));
+                    }
+                }
+                ScopeLayer::Ref(data) => {
+                    // Try to find in this layer's data
+                    if let Ok(val) = get_json_value(data, key) {
+                        return Ok(ValueRef::Borrowed(val));
+                    }
+                    // Key not found in this layer, continue to next
+                }
+            }
+        }
+
+        Err(format!("Key '{}' not found in scope chain", key))
+    }
+}
+
+// ==================== Processing ====================
+
+use crate::variables::process_variables_scoped;
+
 pub fn process_each(input: &str, data: &Value) -> Result<String, String> {
     let (_, nodes) = document(input.as_bytes()).map_err(|e| e.to_string())?;
     let mut out = Vec::with_capacity(input.len());
-    render_nodes(&mut out, &nodes, data, None)?;
+    let mut scope = ScopeChain::new(data);
+    render_nodes(&mut out, &nodes, &mut scope)?;
     String::from_utf8(out).map_err(|e| e.to_string())
 }
 
-// TODO: does this have global access or scoped to item?
-fn build_iteration_context(
-    original: &Value,
-    item: &Value,
-    index: usize,
-    item_name: &str,
-    index_name: &str,
-) -> Value {
-    let mut ctx = original.clone();
-    if let Value::Object(ref mut map) = ctx {
-        map.insert(item_name.to_string(), item.clone());
-        // Only insert index if it doesn't shadow the item name
-        if index_name != item_name {
-            map.insert(index_name.to_string(), Value::Number(index.into()));
-        }
-    }
-    ctx
-}
-
-fn render_nodes(
+fn render_nodes<'a>(
     out: &mut Vec<u8>,
-    nodes: &[Node],
-    data: &Value,
-    current_item: Option<(&Value, usize, &str, &str)>, // (item, 1-based index, item_name, index_name)
+    nodes: &[Node<'a>],
+    scope: &mut ScopeChain<'a>,
 ) -> Result<(), String> {
     for node in nodes {
         match node {
             Node::Text(txt) => {
                 let text = std::str::from_utf8(txt).map_err(|e| e.to_string())?;
-                let ctx = match current_item {
-                    Some((item, idx, item_name, index_name)) => {
-                        build_iteration_context(data, item, idx, item_name, index_name)
-                    }
-                    None => data.clone(),
-                };
-                let processed = process_variables(text, &ctx)?;
+                let processed = process_variables_scoped(text, scope)?;
                 out.extend_from_slice(processed.as_bytes());
             }
             Node::Each {
@@ -75,33 +152,18 @@ fn render_nodes(
                 index_name,
                 children,
             } => {
-                // Build context with current item to support nested Each accessing parent's item
-                let ctx = match current_item {
-                    Some((item, idx, parent_item_name, parent_index_name)) => {
-                        build_iteration_context(
-                            data,
-                            item,
-                            idx,
-                            parent_item_name,
-                            parent_index_name,
-                        )
-                    }
-                    None => data.clone(),
-                };
-
-                let array_value = get_json_value(&ctx, items_path)?;
+                let array_value = scope.get(items_path)?;
                 let array = match array_value {
-                    Value::Array(arr) => arr,
+                    ValueRef::Borrowed(Value::Array(arr)) => arr,
                     _ => return Err(format!("'{}' is not an array", items_path)),
                 };
 
-                for (idx, item) in array.iter().enumerate() {
-                    render_nodes(
-                        out,
-                        children,
-                        &ctx,
-                        Some((item, idx + 1, item_name, index_name)),
-                    )?;
+                // Clone the array reference to avoid borrow issues
+                let items: Vec<_> = array.iter().collect();
+                for (idx, item) in items.into_iter().enumerate() {
+                    scope.push_iteration(item_name, item, index_name, idx + 1);
+                    render_nodes(out, children, scope)?;
+                    scope.pop();
                 }
             }
         }

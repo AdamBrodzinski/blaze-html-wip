@@ -7,6 +7,7 @@ use nom::{bytes::complete::take_while1, IResult};
 use serde_json::Value;
 
 use crate::data::get_json_value;
+use crate::each::{ScopeChain, ValueRef};
 
 #[derive(Debug)]
 enum Part<'a> {
@@ -39,6 +40,41 @@ pub fn process_variables(template_str: &str, data: &Value) -> Result<String, Str
                     }
                 }
             }
+        }
+    }
+
+    Ok(output)
+}
+
+/// Process variables using a scope chain (avoids cloning)
+pub fn process_variables_scoped(
+    template_str: &str,
+    scope: &ScopeChain<'_>,
+) -> Result<String, String> {
+    let (_, parts) = parse_template(template_str).map_err(|e| e.to_string())?;
+    let mut output = String::with_capacity(template_str.len());
+
+    for part in parts {
+        match part {
+            Part::Text(t) => output.push_str(t),
+            Part::Escaped => output.push('@'),
+            Part::Var(var_name) => match scope.get(var_name)? {
+                ValueRef::Borrowed(json_value) => match json_value {
+                    Value::String(x) => escape_html_into(x, &mut output),
+                    Value::Bool(x) => output.push_str(&x.to_string()),
+                    Value::Number(x) => output.push_str(&x.to_string()),
+                    Value::Null => return Err(String::from("Not supported")),
+                    Value::Array(arr) => {
+                        return Err(format!("Cannot render array to string {arr:?}"));
+                    }
+                    Value::Object(obj) => {
+                        return Err(format!("Cannot render obj to string {obj:?}"));
+                    }
+                },
+                ValueRef::Index(idx) => {
+                    output.push_str(&idx.to_string());
+                }
+            },
         }
     }
 
