@@ -1,14 +1,16 @@
 use serde_json::Value;
 
-use crate::ast::{parse_template, render};
+use crate::ast::{parse_template, render_owned, OwnedTemplateNode};
 use crate::each::ScopeChain;
 use crate::BlazeTemplate;
 
-/// Parse and render a template in a single pass
+/// Parse and render a template in a single pass (no caching for inline templates)
+#[allow(dead_code)]
 pub fn build_template(ctx: &BlazeTemplate, input: &str, data: &Value) -> Result<String, String> {
     let (_, nodes) = parse_template(input).map_err(|e| e.to_string())?;
+    let owned = OwnedTemplateNode::vec_from_borrowed(&nodes);
     let mut scope = ScopeChain::new(data);
-    render(&nodes, ctx, &mut scope)
+    render_owned(&owned, ctx, &mut scope)
 }
 
 /// tests the integration of template parsers to ensure they work as expected

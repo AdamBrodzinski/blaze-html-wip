@@ -4,7 +4,7 @@ use std::sync::{Arc, RwLock};
 
 use serde_json::Value;
 
-use crate::build_template::build_template;
+use crate::ast::{parse_template, OwnedTemplateNode};
 
 #[derive(Debug, Clone)]
 pub struct BlazeTemplateConfig {
@@ -84,6 +84,7 @@ impl BlazeTemplateBuilder {
                 cache_file_read: self.cache_file_read,
             },
             file_cache: Arc::new(RwLock::new(HashMap::new())),
+            ast_cache: Arc::new(RwLock::new(HashMap::new())),
             component_registry: self.component_registry,
         }
     }
@@ -93,6 +94,7 @@ impl BlazeTemplateBuilder {
 pub struct BlazeTemplate {
     config: BlazeTemplateConfig,
     file_cache: Arc<RwLock<HashMap<String, String>>>,
+    ast_cache: Arc<RwLock<HashMap<String, Vec<OwnedTemplateNode>>>>,
     component_registry: HashMap<String, String>,
 }
 
@@ -151,8 +153,44 @@ impl BlazeTemplate {
     }
 
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
-        let template_file = self.read_template(rel_page_path)?;
-        build_template(self, &template_file, data)
+        use crate::ast::render_owned;
+        use crate::each::ScopeChain;
+
+        // Use cached AST if available
+        let ast = self.get_or_parse_ast(rel_page_path)?;
+        let mut scope = ScopeChain::new(data);
+        render_owned(&ast, self, &mut scope)
+    }
+
+    /// Get cached AST or parse and cache it
+    pub fn get_or_parse_ast(&self, rel_path: &str) -> Result<Vec<OwnedTemplateNode>, String> {
+        let use_cache = self.config.cache_file_read && !self.config.dev;
+
+        // Check cache first
+        if use_cache {
+            let cache = self
+                .ast_cache
+                .read()
+                .map_err(|e| format!("AST cache read lock poisoned: {e}"))?;
+            if let Some(ast) = cache.get(rel_path) {
+                return Ok(ast.clone());
+            }
+        }
+
+        // Parse the template
+        let template = self.read_template(rel_path)?;
+        let (_, nodes) = parse_template(&template).map_err(|e| format!("Parse error: {e}"))?;
+        let owned = OwnedTemplateNode::vec_from_borrowed(&nodes);
+
+        // Cache the AST
+        if use_cache {
+            self.ast_cache
+                .write()
+                .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
+                .insert(rel_path.to_string(), owned.clone());
+        }
+
+        Ok(owned)
     }
 }
 

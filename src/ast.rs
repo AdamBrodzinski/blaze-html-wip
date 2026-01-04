@@ -36,6 +36,57 @@ pub enum TemplateNode<'a> {
     },
 }
 
+// ==================== Owned AST (for caching) ====================
+
+/// Owned version of TemplateNode that can be cached
+#[derive(Debug, Clone, PartialEq)]
+pub enum OwnedTemplateNode {
+    Text(String),
+    Variable(String),
+    Escaped,
+    Component {
+        name: String,
+        children: Vec<OwnedTemplateNode>,
+    },
+    Each {
+        items_path: String,
+        item_name: String,
+        idx_name: String,
+        children: Vec<OwnedTemplateNode>,
+    },
+}
+
+impl OwnedTemplateNode {
+    /// Convert a borrowed AST node to an owned one
+    pub fn from_borrowed(node: &TemplateNode<'_>) -> Self {
+        match node {
+            TemplateNode::Text(s) => Self::Text((*s).to_string()),
+            TemplateNode::Variable(s) => Self::Variable((*s).to_string()),
+            TemplateNode::Escaped => Self::Escaped,
+            TemplateNode::Component { name, children } => Self::Component {
+                name: (*name).to_string(),
+                children: children.iter().map(Self::from_borrowed).collect(),
+            },
+            TemplateNode::Each {
+                items_path,
+                item_name,
+                idx_name,
+                children,
+            } => Self::Each {
+                items_path: (*items_path).to_string(),
+                item_name: (*item_name).to_string(),
+                idx_name: (*idx_name).to_string(),
+                children: children.iter().map(Self::from_borrowed).collect(),
+            },
+        }
+    }
+
+    /// Convert a vector of borrowed nodes to owned
+    pub fn vec_from_borrowed(nodes: &[TemplateNode<'_>]) -> Vec<Self> {
+        nodes.iter().map(Self::from_borrowed).collect()
+    }
+}
+
 // ==================== Parser ====================
 
 /// Parse a complete template into AST nodes
@@ -323,9 +374,12 @@ fn parse_uppercase_tag_name(input: &str) -> IResult<&str, &str> {
     .parse(input)
 }
 
-// ==================== Render ====================
+// ==================== Render (borrowed AST) ====================
+// Note: These functions are kept for potential future use with inline templates
+// that don't need caching. The owned render functions are used by default.
 
 /// Render AST nodes to string
+#[allow(dead_code)]
 pub fn render<'a>(
     nodes: &[TemplateNode<'a>],
     ctx: &BlazeTemplate,
@@ -336,6 +390,7 @@ pub fn render<'a>(
     Ok(out)
 }
 
+#[allow(dead_code)]
 fn render_into<'a>(
     out: &mut String,
     nodes: &[TemplateNode<'a>],
@@ -386,6 +441,7 @@ fn render_variable(out: &mut String, path: &str, scope: &ScopeChain) -> Result<(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn render_component<'a>(
     out: &mut String,
     name: &str,
@@ -414,6 +470,7 @@ fn render_component<'a>(
 }
 
 /// Render a component template with its own lifetime
+#[allow(dead_code)]
 fn render_component_template<'a>(
     out: &mut String,
     nodes: &[TemplateNode<'_>],
@@ -457,6 +514,7 @@ fn render_component_template<'a>(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn render_component_template_to_string<'a>(
     nodes: &[TemplateNode<'_>],
     ctx: &BlazeTemplate,
@@ -467,6 +525,7 @@ fn render_component_template_to_string<'a>(
     Ok(out)
 }
 
+#[allow(dead_code)]
 fn render_each_in_component<'a>(
     out: &mut String,
     items_path: &str,
@@ -497,6 +556,7 @@ fn render_each_in_component<'a>(
     Ok(())
 }
 
+#[allow(dead_code)]
 fn render_each<'a>(
     out: &mut String,
     items_path: &str,
@@ -591,6 +651,101 @@ fn escape_html_into(s: &str, output: &mut String) {
             _ => output.push(c),
         }
     }
+}
+
+// ==================== Owned Render (for cached ASTs) ====================
+
+/// Render owned AST nodes to string
+pub fn render_owned<'a>(
+    nodes: &[OwnedTemplateNode],
+    ctx: &BlazeTemplate,
+    scope: &mut ScopeChain<'a>,
+) -> Result<String, String> {
+    let mut out = String::new();
+    render_owned_into(&mut out, nodes, ctx, scope)?;
+    Ok(out)
+}
+
+fn render_owned_into<'a>(
+    out: &mut String,
+    nodes: &[OwnedTemplateNode],
+    ctx: &BlazeTemplate,
+    scope: &mut ScopeChain<'a>,
+) -> Result<(), String> {
+    for node in nodes {
+        match node {
+            OwnedTemplateNode::Text(t) => out.push_str(t),
+            OwnedTemplateNode::Escaped => out.push('@'),
+            OwnedTemplateNode::Variable(path) => {
+                render_variable(out, path, scope)?;
+            }
+            OwnedTemplateNode::Component { name, children } => {
+                render_owned_component(out, name, children, ctx, scope)?;
+            }
+            OwnedTemplateNode::Each {
+                items_path,
+                item_name,
+                idx_name,
+                children,
+            } => {
+                render_owned_each(out, items_path, item_name, idx_name, children, ctx, scope)?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn render_owned_component<'a>(
+    out: &mut String,
+    name: &str,
+    children: &[OwnedTemplateNode],
+    ctx: &BlazeTemplate,
+    scope: &mut ScopeChain<'a>,
+) -> Result<(), String> {
+    let path = ctx
+        .get_component_path(name)
+        .ok_or_else(|| format!("Component '{}' not registered", name))?;
+
+    // Render children to string for slot insertion
+    let children_html = render_owned(children, ctx, scope)?;
+
+    // Insert children into component's slot
+    // We need to re-parse the component with slot content inserted
+    // (This is a limitation - we can't cache the post-slot-insertion version)
+    let template = ctx.read_template(path)?;
+    let with_slot = insert_slot_content(&template, &children_html);
+
+    // Parse the slot-inserted template and render
+    let (_, template_nodes) =
+        parse_template(&with_slot).map_err(|e| format!("Parse error: {}", e))?;
+    let owned_nodes = OwnedTemplateNode::vec_from_borrowed(&template_nodes);
+    render_owned_into(out, &owned_nodes, ctx, scope)?;
+
+    Ok(())
+}
+
+fn render_owned_each<'a>(
+    out: &mut String,
+    items_path: &str,
+    item_name: &str,
+    idx_name: &str,
+    children: &[OwnedTemplateNode],
+    ctx: &BlazeTemplate,
+    scope: &mut ScopeChain<'a>,
+) -> Result<(), String> {
+    let array_value = scope.get(items_path)?;
+    let array = match array_value {
+        ValueRef::Borrowed(Value::Array(arr)) => arr,
+        _ => return Err(format!("'{}' is not an array", items_path)),
+    };
+
+    for (idx, item) in array.iter().enumerate() {
+        scope.push_iteration_owned(item_name, item, idx_name, idx + 1);
+        render_owned_into(out, children, ctx, scope)?;
+        scope.pop();
+    }
+
+    Ok(())
 }
 
 // ==================== Tests ====================
