@@ -1,10 +1,10 @@
 #![allow(unused)]
+use nom::IResult;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::{pair, preceded};
-use nom::IResult;
 
 use nom::Parser;
 
@@ -21,7 +21,6 @@ pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
         |(_, attrs, _)| {
             let mut src_path: Option<&str> = None;
 
-            // collect attributes and pass through to final script tag
             let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
             for (key, value) in attrs {
                 if key == "path" {
