@@ -13,8 +13,3 @@ pub enum TemplateNode {
 // Component(...)
 // Script(...)
 // Style(...)
-
-/// tranforms the page template into AST nodes
-pub fn parse_template(input: &str) -> IResult<&str, Vec<TemplateNode>> {
-    todo!()
-}
