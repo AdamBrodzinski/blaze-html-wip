@@ -28,6 +28,7 @@
 			border: none;
 			font-size: 14px;
 			border-radius: 30px;
+			/* this causes a panic, but the layout component uses @@media and that does get escaped  */
 			@@media only screen and (max-width: 450px) {
 				& {
 					font-size: 16px;
