@@ -8,13 +8,7 @@ use nom::{IResult, Parser};
 pub mod attrs {
     use super::*;
 
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct Attr<'a> {
-        name: &'a str,
-        value: &'a str,
-    }
-
-    /// parse an attr with single or double quotes
+    /// parse a pair of single or double quotes and extract inner
     pub fn parse_quoted_value(input: &str) -> nom::IResult<&str, &str> {
         alt((
             delimited(char('\''), take_till1(|c| c == '\''), char('\'')),
@@ -23,12 +17,12 @@ pub mod attrs {
         .parse(input)
     }
 
-    pub fn parse_attr(input: &str) -> IResult<&str, Attr<'_>> {
-        let (input, (name, value)) =
+    pub fn parse_attr(input: &str) -> IResult<&str, (&str, &str)> {
+        let (input, name_value_pair) =
             separated_pair(take_while1(is_attr_name_char), tag("="), parse_quoted_value)
                 .parse(input)?;
 
-        Ok((input, Attr { name, value }))
+        Ok((input, name_value_pair))
     }
 
     fn is_attr_name_char(c: char) -> bool {
