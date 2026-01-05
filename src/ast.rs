@@ -1,3 +1,4 @@
+#![allow(unused)]
 use nom::IResult;
 
 #[derive(Debug, PartialEq)]
