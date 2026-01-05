@@ -89,12 +89,14 @@ fn bench_ff3_videos(c: &mut Criterion) {
 
     // Create 300 video items with same values
     let videos: Vec<_> = (0..300)
-        .map(|_| json!({
-            "title": "2002",
-            "artist": "Anne Marie",
-            "chords": "C, G, Am, Em, F",
-            "link": "/tutorials/2002-guitar-lesson-by-anne-marie"
-        }))
+        .map(|_| {
+            json!({
+                "title": "2002",
+                "artist": "Anne Marie",
+                "chords": "C, G, Am, Em, F",
+                "link": "/tutorials/2002-guitar-lesson-by-anne-marie"
+            })
+        })
         .collect();
 
     let data = json!({
@@ -103,10 +105,9 @@ fn bench_ff3_videos(c: &mut Criterion) {
 
     c.bench_function("ff3_videos", |b| {
         b.iter(|| {
-            blaze.render_page(
-                black_box("bench/ff3_videos.html"),
-                black_box(&data),
-            ).unwrap()
+            blaze
+                .render_page(black_box("bench/ff3_videos.html"), black_box(&data))
+                .unwrap()
         })
     });
 }
