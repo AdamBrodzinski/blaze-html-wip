@@ -19,6 +19,6 @@ tokio = { version = "1", features = ["full"] }
 name = "template_bench"
 harness = false
 
-[[example]]
-name = "axum_server"
-path = "examples/axum_server.rs"
+# [[example]]
+# name = "axum_server"
+# path = "examples/axum_server.rs"
