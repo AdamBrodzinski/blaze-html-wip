@@ -11,7 +11,10 @@
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(wc:*)",
-      "Bash(cargo bench:*)"
+      "Bash(cargo bench:*)",
+      "Bash(cargo run:*)",
+      "Bash(cat:*)",
+      "Bash(RUST_BACKTRACE=1 cargo bench:*)"
     ],
     "deny": []
   }
