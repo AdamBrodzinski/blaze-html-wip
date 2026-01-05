@@ -5,11 +5,11 @@ use serde_json::Value;
 
 use nom::Parser;
 
-pub fn parse_asset(input: &str, data: &Value) -> IResult<String, String> {
+pub fn parse_asset<'a>(input: &'a str, data: &Value) -> IResult<&'a str, String> {
     let (input, _) = tag("<Script").parse(input)?;
     // let (input, _) = space1(input)?;
 
-    Ok((input.to_string(), String::from("TODO")))
+    Ok((input, String::from("TODO")))
 }
 
 #[cfg(test)]
@@ -24,9 +24,9 @@ mod tests {
         fn parse_script_tag() {
             let data = json!(());
             let template = r#"<Script src="foo.com/bar.js" />"#;
-            let (input, remaining) = parse_asset(r#"<div>Foo</div>"#, &data).unwrap();
+            let (remaining, output) = parse_asset(template, &data).unwrap();
             assert_eq!(
-                input,
+                output,
                 r#"<script src="foo.com/bar.js"></script>"#.to_string()
             );
         }
