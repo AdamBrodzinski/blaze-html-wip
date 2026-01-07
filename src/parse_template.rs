@@ -1,4 +1,5 @@
 use nom::Parser;
+use nom::combinator::rest;
 use nom::{branch::alt, multi::many0};
 use serde_json::Value;
 
@@ -11,7 +12,7 @@ pub fn render_template(page_template: &str, data: &Value) -> Result<String, Stri
 }
 
 fn parse_template_to_ast(page_template: &str, data: &Value) -> Result<Vec<TemplateNode>, String> {
-    let (input, _) = many0(asset::parse_script)
+    let (input, _) = many0(alt((asset::parse_script, rest)))
         .parse(page_template)
         .map_err(|e| e.to_string())?;
 
