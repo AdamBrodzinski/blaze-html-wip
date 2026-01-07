@@ -9,10 +9,13 @@ use crate::text::parse_text;
 /// Parse and render a template in a single pass
 pub fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
     let ast_nodes = parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
-    render_ast(ast_nodes, data, page_template.len())
+    render_ast(&ast_nodes, data, page_template.len())
 }
 
-fn parse_template_to_ast(page_template: &str, _data: &Value) -> Result<Vec<TemplateNode>, String> {
+pub fn parse_template_to_ast(
+    page_template: &str,
+    _data: &Value,
+) -> Result<Vec<TemplateNode>, String> {
     let (remaining, nodes) = many0(alt((parse_script, parse_text)))
         .parse(page_template)
         .map_err(|e| e.to_string())?;
@@ -22,16 +25,16 @@ fn parse_template_to_ast(page_template: &str, _data: &Value) -> Result<Vec<Templ
     Ok(nodes)
 }
 
-fn render_ast(
-    ast_nodes: Vec<TemplateNode>,
+pub fn render_ast(
+    ast_nodes: &Vec<TemplateNode>,
     data: &Value,
     template_len: usize,
 ) -> Result<String, String> {
     let mut str_buff = String::with_capacity(template_len);
     for node in ast_nodes {
         match node {
-            TemplateNode::Asset(x) => str_buff.push_str(&x),
-            TemplateNode::Text(x) => str_buff.push_str(&x),
+            TemplateNode::Asset(x) => str_buff.push_str(x),
+            TemplateNode::Text(x) => str_buff.push_str(x),
         }
     }
     Ok(str_buff)
