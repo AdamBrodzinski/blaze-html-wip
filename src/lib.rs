@@ -1,5 +1,5 @@
 mod asset;
 mod ast;
-mod parse_template;
+mod parse;
 mod shared_parsers;
 mod text;
