@@ -53,10 +53,15 @@ mod tests {
             let template = r#"Before <Script path="static/bar.js" /> After"#;
             let data = json!(());
             let ast = parse_template_to_ast(template, &data).unwrap();
-            // dbg!(&ast);
-            // TODO test to make sure AST matches
             assert_eq!(ast.len(), 3);
-            assert_eq!(ast, []);
+            assert_eq!(
+                ast,
+                [
+                    TemplateNode::Text("Before ".into()),
+                    TemplateNode::Asset("<script src=\"static/bar.js\"></script>".into()),
+                    TemplateNode::Text(" After".into()),
+                ]
+            );
         }
     }
 }
