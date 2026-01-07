@@ -2,8 +2,8 @@ use nom::Parser;
 use nom::{branch::alt, multi::many0};
 use serde_json::Value;
 
-use crate::asset::parse_script;
 use crate::ast::TemplateNode;
+use crate::tag_asset::parse_script;
 use crate::text::parse_text;
 
 /// Parse and render a template in a single pass
