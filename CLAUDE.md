@@ -8,24 +8,24 @@ This is a Rust library called `blaze-html` that provides a fast, lightweight HTM
 
 ## Core Architecture
 
-The library consists of a single module with two main functions:
+The library consists of a single module with two main public functions:
 
-- `render_template_str()` - Main template rendering function that processes template strings and substitutes variables
-- `get_json_value()` - Helper function that extracts values from nested JSON objects using dot notation
+- `BlazeTemplate::new()` - template engine struct, caches ast, configures dev overrides
+- `blaze_template.render_page("pages/home.html", data)` - reads template, transforms to ast with JSON data, returns String
+- `blaze_template.render_str("Hello @name", json!({"name": "Foo"}))` - reads template from str
 
 ### Template Syntax
 
 Templates use `@variable` syntax for variable substitution:
 - Simple variables: `@name`, `@age`
 - Nested objects: `@person.name`, `@user.profile.email`
-- Variables are only substituted when preceded by non-alphanumeric characters to avoid transforming email addresses
+- Escape uses @@: `foo@@bar.com`
 
 ### Data Handling
 
 - Templates accept `serde_json::Value` objects as data
 - Supports strings, numbers, booleans, and null values
-- Objects and arrays are left as-is (no substitution) until future work is completed
-- Missing variables are left unchanged in the output
+- Missing variables will return an error result
 
 ## Development Commands
 
@@ -33,18 +33,10 @@ Templates use `@variable` syntax for variable substitution:
 ```bash
 cargo build          # Build the project
 cargo check          # Quick compile check
-```
-
-### Testing
-```bash
 cargo test           # Run all tests
 cargo test --lib     # Run unit tests only
 cargo test --doc     # Run documentation tests
 cargo bench          # Run performance benchmarks
-```
-
-### Development
-```bash
 cargo doc            # Generate documentation
 cargo fmt            # Format code
 cargo clippy         # Run linter
@@ -52,28 +44,13 @@ cargo clippy         # Run linter
 
 ## Project Structure
 
-- `src/lib.rs` - Main library code with template rendering logic
-- `benches/template_bench.rs` - Performance benchmarks using Criterion
-- `Cargo.toml` - Project configuration with `serde_json` dependency
-- `todo.md` - Template syntax examples and development notes
-
-## Testing Strategy
-
-The project has comprehensive unit tests covering:
-- Variable substitution (simple and nested)
-- Data type handling (strings, numbers, booleans, null)
-- Edge cases (missing variables, email addresses)
-
-Performance benchmarks using Criterion framework test:
-- Simple variable substitution
-- Boolean serialization
-- Nested field access
-- Deeply nested field access
-
-## LLM Rules
-- run `cargo fmt` after substantial code changes
+- `src/ast.rs` - Types for AST nodes
+- `src/engine.rs` - Template engine instance struct (has render_page fn)
+- `src/parse.rs` - Composes all nom parsers together to parse the entire template
+- `src/shared_parsers.rs` - Utility fns shared across parsers
+- `src/tag_assets.rs` - Asset tags (script/style), appends cache hash to src
 
 ## Adding a new template construct
-- create the nom parse (for example <Foo /> tag)
+- create the nom parser (for example <Foo /> tag)
 - add the new parser to parse::parse_template_to_ast many0/alt
 - update the text parser to stop at "<Foo"
