@@ -87,7 +87,7 @@ mod tests {
             result,
             indoc! {r#"
                 <script src="pages/test_engine_read.js"></script>
-                <Style path="pages/test_engine_read.css"/>
+                <link rel="stylesheet" href="pages/test_engine_read.css">
                 <div>Hello World</div>
             "#}
         );

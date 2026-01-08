@@ -3,22 +3,18 @@ use nom::{branch::alt, multi::many0};
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
-use crate::tag_asset::parse_script;
-use crate::text::parse_text;
-
-/// Parse and render a template in a single pass
-pub fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
-    let ast_nodes = parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
-    render_ast(&ast_nodes, data, page_template.len())
-}
 
 pub fn parse_template_to_ast(
     page_template: &str,
     _data: &Value,
 ) -> Result<Vec<TemplateNode>, String> {
-    let (remaining, nodes) = many0(alt((parse_script, parse_text)))
-        .parse(page_template)
-        .map_err(|e| e.to_string())?;
+    let (remaining, nodes) = many0(alt((
+        crate::tag_asset::parse_script,
+        crate::tag_asset::parse_style,
+        crate::text::parse_text,
+    )))
+    .parse(page_template)
+    .map_err(|e| e.to_string())?;
 
     debug_assert!(remaining.is_empty());
 
@@ -44,6 +40,12 @@ pub fn render_ast(
 mod tests {
     use super::*;
 
+    // helper to render ast for testing
+    fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
+        let ast_nodes = parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
+        render_ast(&ast_nodes, data, page_template.len())
+    }
+
     mod render {
         use super::*;
         use serde_json::json;
@@ -59,20 +61,28 @@ mod tests {
 
     mod parse {
         use super::*;
+        use indoc::indoc;
         use serde_json::json;
 
         #[test]
         fn parse_ast() {
-            let template = r#"Before <Script path="static/bar.js" /> After"#;
+            let template = indoc! {r#"
+                Before
+                <Script path="foo.js" />
+                <Style path="bar.css" />
+                After
+            "#};
             let data = json!(());
             let ast = parse_template_to_ast(template, &data).unwrap();
-            assert_eq!(ast.len(), 3);
+            assert_eq!(ast.len(), 5);
             assert_eq!(
                 ast,
                 [
-                    TemplateNode::Text("Before ".into()),
-                    TemplateNode::Asset("<script src=\"static/bar.js\"></script>".into()),
-                    TemplateNode::Text(" After".into()),
+                    TemplateNode::Text("Before\n".into()),
+                    TemplateNode::Asset(r#"<script src="foo.js"></script>"#.into()),
+                    TemplateNode::Text("\n".into()),
+                    TemplateNode::Asset(r#"<link rel="stylesheet" href="bar.css">"#.into()),
+                    TemplateNode::Text("\nAfter\n".into()),
                 ]
             );
         }

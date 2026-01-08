@@ -72,3 +72,8 @@ Performance benchmarks using Criterion framework test:
 
 ## LLM Rules
 - run `cargo fmt` after substantial code changes
+
+## Adding a new template construct
+- create the nom parse (for example <Foo /> tag)
+- add the new parser to parse::parse_template_to_ast many0/alt
+- update the text parser to stop at "<Foo"
