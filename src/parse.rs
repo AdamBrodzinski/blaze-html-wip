@@ -27,7 +27,7 @@ pub fn parse_template_to_ast(
 
 pub fn render_ast(
     ast_nodes: &Vec<TemplateNode>,
-    data: &Value,
+    _data: &Value,
     template_len: usize,
 ) -> Result<String, String> {
     let mut str_buff = String::with_capacity(template_len);

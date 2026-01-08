@@ -1,202 +1,52 @@
-use std::collections::HashMap;
-use std::path::PathBuf;
-use std::sync::{Arc, RwLock};
-
 use serde_json::Value;
+use std::path::PathBuf;
 
-use crate::ast::{OwnedTemplateNode, parse_template};
+use crate::parse;
 
 #[derive(Debug, Clone)]
-pub struct BlazeTemplateConfig {
+pub struct BlazeTemplate {
     pub dev: bool,
-    pub panic_on_error: bool,
-    pub panic_on_null: bool,
-    pub project_path: String,
-    pub root_dir: String,
-    pub cache_file_read: bool,
+    pub(crate) project_path: String,
+    pub(crate) root_dir: String,
 }
 
-#[derive(Debug, Clone)]
-pub struct BlazeTemplateBuilder {
-    dev: bool,
-    panic_on_error: bool,
-    panic_on_null: bool,
-    project_path: String,
-    root_dir: String,
-    cache_file_read: bool,
-    component_registry: HashMap<String, String>,
-}
-
-impl Default for BlazeTemplateBuilder {
+impl Default for BlazeTemplate {
     fn default() -> Self {
         Self {
             dev: false,
-            panic_on_error: false,
-            panic_on_null: true,
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
-            cache_file_read: true,
-            component_registry: HashMap::new(),
         }
     }
 }
 
-impl BlazeTemplateBuilder {
+impl BlazeTemplate {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
     pub fn set_root_directory(mut self, path: &str) -> Self {
         self.root_dir = path.to_string();
         self
     }
 
-    pub fn panic_on_error(mut self, should_panic: bool) -> Self {
-        self.panic_on_error = should_panic;
-        self
-    }
-
-    pub fn panic_on_null(mut self, should_panic: bool) -> Self {
-        self.panic_on_null = should_panic;
-        self
-    }
-
+    /// Dev mode will disable template caching between requests
     pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
         self.dev = dev_enabled;
         self
     }
 
-    pub fn cache_file_read(mut self, enabled: bool) -> Self {
-        self.cache_file_read = enabled;
-        self
-    }
-
-    pub fn register_component(mut self, name: &str, path: &str) -> Self {
-        self.component_registry
-            .insert(name.to_string(), path.to_string());
-        self
-    }
-
-    pub fn build(self) -> BlazeTemplate {
-        BlazeTemplate {
-            config: BlazeTemplateConfig {
-                dev: self.dev,
-                panic_on_error: self.panic_on_error,
-                panic_on_null: self.panic_on_null,
-                project_path: self.project_path,
-                root_dir: self.root_dir,
-                cache_file_read: self.cache_file_read,
-            },
-            file_cache: Arc::new(RwLock::new(HashMap::new())),
-            ast_cache: Arc::new(RwLock::new(HashMap::new())),
-            component_registry: self.component_registry,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct BlazeTemplate {
-    config: BlazeTemplateConfig,
-    file_cache: Arc<RwLock<HashMap<String, String>>>,
-    ast_cache: Arc<RwLock<HashMap<String, Vec<OwnedTemplateNode>>>>,
-    component_registry: HashMap<String, String>,
-}
-
-impl BlazeTemplate {
-    pub fn builder() -> BlazeTemplateBuilder {
-        BlazeTemplateBuilder::default()
-    }
-
-    pub fn new() -> Self {
-        Self::builder().build()
-    }
-
-    pub fn config(&self) -> &BlazeTemplateConfig {
-        &self.config
-    }
-
-    pub fn get_component_path(&self, name: &str) -> Option<&String> {
-        self.component_registry.get(name)
-    }
-
-    fn get_template_path(&self, rel_page_path: &str) -> PathBuf {
-        [
-            &self.config.project_path,
-            &self.config.root_dir,
-            rel_page_path,
-        ]
-        .iter()
-        .collect()
-    }
-
-    pub fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        let use_cache = self.config.cache_file_read && !self.config.dev;
-
-        if use_cache {
-            let cache = self
-                .file_cache
-                .read()
-                .map_err(|e| format!("Cache read lock poisoned: {e}"))?;
-            if let Some(content) = cache.get(rel_page_path) {
-                return Ok(content.clone());
-            }
-        }
-
-        let template_path = self.get_template_path(rel_page_path);
-        let content = std::fs::read_to_string(&template_path).map_err(|e| e.to_string())?;
-
-        if use_cache {
-            self.file_cache
-                .write()
-                .map_err(|e| format!("Cache write lock poisoned: {e}"))?
-                .entry(rel_page_path.to_string())
-                .or_insert(content.clone());
-        }
-
-        Ok(content)
-    }
-
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
-        use crate::ast::render_owned;
-        use crate::each::ScopeChain;
-
-        // Use cached AST if available
-        let ast = self.get_or_parse_ast(rel_page_path)?;
-        let mut scope = ScopeChain::new(data);
-        render_owned(&ast, self, &mut scope)
+        let page_template = self.read_template(rel_page_path)?;
+        let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
+        let html = parse::render_ast(&ast_nodes, data, page_template.len())?;
+        Ok(html)
     }
 
-    /// Get cached AST or parse and cache it
-    pub fn get_or_parse_ast(&self, rel_path: &str) -> Result<Vec<OwnedTemplateNode>, String> {
-        let use_cache = self.config.cache_file_read && !self.config.dev;
-
-        // Check cache first
-        if use_cache {
-            let cache = self
-                .ast_cache
-                .read()
-                .map_err(|e| format!("AST cache read lock poisoned: {e}"))?;
-            if let Some(ast) = cache.get(rel_path) {
-                return Ok(ast.clone());
-            }
-        }
-
-        // Parse the template
-        let template = self.read_template(rel_path)?;
-        let (_, nodes) = parse_template(&template).map_err(|e| format!("Parse error: {e}"))?;
-        let owned = OwnedTemplateNode::vec_from_borrowed(&nodes);
-
-        // Cache the AST
-        if use_cache {
-            self.ast_cache
-                .write()
-                .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
-                .insert(rel_path.to_string(), owned.clone());
-        }
-
-        Ok(owned)
-    }
-}
-
-impl Default for BlazeTemplate {
-    fn default() -> Self {
-        Self::new()
+    pub(crate) fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
+        let path_segments = [&self.project_path, &self.root_dir, rel_page_path];
+        let template_path = path_segments.iter().collect::<PathBuf>();
+        std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
     }
 }
 
@@ -209,34 +59,28 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        assert_eq!(blaze.config().root_dir, "src");
-        assert_eq!(blaze.config().dev, false);
-        assert_eq!(blaze.config().panic_on_error, false);
-        assert_eq!(blaze.config().panic_on_null, true);
+        assert_eq!(blaze.root_dir, "src");
+        assert_eq!(blaze.dev, false);
     }
 
     #[test]
     fn test_builder_pattern() {
-        let blaze = BlazeTemplate::builder()
+        let blaze = BlazeTemplate::new()
             .set_root_directory("customer/pages")
-            .enable_dev(true)
-            .panic_on_error(true)
-            .panic_on_null(false)
-            .build();
+            .enable_dev(true);
 
-        assert_eq!(blaze.config().root_dir, "customer/pages");
-        assert_eq!(blaze.config().dev, true);
-        assert_eq!(blaze.config().panic_on_error, true);
-        assert_eq!(blaze.config().panic_on_null, false);
+        assert_eq!(blaze.root_dir, "customer/pages");
+        assert_eq!(blaze.dev, true);
     }
 
     #[test]
     fn fetches_template_and_passes_to_build() {
-        let blaze = BlazeTemplate::builder()
-            .set_root_directory("test_files")
-            .build();
+        let blaze = BlazeTemplate::new().set_root_directory("test_files");
         let data = json!(());
-        let result = blaze.render_page("pages/static.html", &data).unwrap();
+        let result = blaze
+            .render_page("pages/test_engine_read.html", &data)
+            .unwrap();
+
         assert_eq!(result, "<div>Hello World</div>\n");
     }
 }
