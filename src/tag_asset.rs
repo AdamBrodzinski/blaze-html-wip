@@ -6,10 +6,10 @@ use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::{pair, preceded};
 
-use nom::Parser;
-
 use crate::ast::TemplateNode;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
+
+use nom::Parser;
 
 pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
     map(
@@ -19,7 +19,7 @@ pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
             pair(multispace0, tag("/>")),
         ),
         |(_, attrs, _)| {
-            let (src_path, other_attrs) = separate_path_attr(attrs);
+            let (src_path, other_attrs) = separate_path_attr(attrs, "<Script src='../path'");
             let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
             TemplateNode::Asset(text)
         },
@@ -27,10 +27,32 @@ pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
     .parse(input)
 }
 
-fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>) -> (&'a str, String) {
-    let mut src_path: Option<&str> = None;
+pub fn parse_style(input: &str) -> IResult<&str, TemplateNode> {
+    map(
+        (
+            tag("<Style"),
+            many0(preceded(multispace1, parse_attr)),
+            pair(multispace0, tag("/>")),
+        ),
+        |(_, attrs, _)| {
+            let (src_path, other_attrs) = separate_path_attr(attrs, "<Style src='../path'");
+            let text = format!(
+                r#"<link rel="stylesheet" href="{}"{}>"#,
+                src_path, other_attrs
+            );
+            TemplateNode::Asset(text)
+        },
+    )
+    .parse(input)
+}
 
+fn separate_path_attr<'a>(
+    attrs: Vec<(&str, &'a str)>,
+    tag_name: &'static str,
+) -> (&'a str, String) {
+    let mut src_path: Option<&str> = None;
     let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
+
     for (key, value) in attrs {
         if key == "path" {
             src_path = Some(value);
@@ -46,7 +68,7 @@ fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>) -> (&'a str, String) {
 
     let src_path = match src_path {
         Some(path) => path,
-        None => panic!("'path' is a required field of Script tag"),
+        None => panic!("'path' is a required field of the {} /> tag", tag_name),
     };
     (src_path, passthrough_attrs)
 }
@@ -94,12 +116,33 @@ mod tests {
             assert_eq!(node, TemplateNode::Asset(expected_text.into()));
         }
 
-        // #[test]
-        // fn fails_when_path_is_missing() {
-        //     let template = r#"<Script foo='bar' />"#;
-        //     let result = parse_script(template);
-        //     dbg!(&result);
-        //     assert!(result.is_err());
-        // }
+        #[test]
+        fn fails_when_path_is_missing() {
+            let template = r#"<Script foo='bar' />"#;
+            let result = parse_script(template);
+            dbg!(&result);
+            assert!(result.is_err());
+        }
+    }
+
+    mod style {
+        use super::*;
+
+        #[test]
+        fn minimal() {
+            let template = r#"<Style path="static/bar.css"    />"#;
+            let (_remaining, node) = parse_style(template).unwrap();
+            let expected_text = r#"<link rel="stylesheet" href="static/bar.css">"#;
+            assert_eq!(node, TemplateNode::Asset(expected_text.into()));
+        }
+
+        #[test]
+        fn with_attrs() {
+            let template = r#"<Style path="static/bar.css" foo="bar" baz="qux"/>"#;
+            let (_remaining, node) = parse_style(template).unwrap();
+            let expected_text =
+                r#"<link rel="stylesheet" href="static/bar.css" foo="bar" baz="qux">"#;
+            assert_eq!(node, TemplateNode::Asset(expected_text.into()));
+        }
     }
 }
