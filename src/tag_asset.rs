@@ -76,6 +76,7 @@ fn separate_path_attr<'a>(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
 
     mod script {
         use super::*;
@@ -99,13 +100,16 @@ mod tests {
 
         #[test]
         fn multi_line_spaces() {
-            let template = r#"<Script 
-              path='static/bar.js' 
-            /> other text"#;
+            let template = indoc! {r#"
+                <Script
+                  path='static/bar.js'
+                /> other 
+                 text
+            "#};
             let (remaining, node) = parse_script(template).unwrap();
             let expected_text = r#"<script src="static/bar.js"></script>"#;
             assert_eq!(node, TemplateNode::Asset(expected_text.into()));
-            assert_eq!(remaining, " other text");
+            assert_eq!(remaining, " other \n text\n");
         }
 
         #[test]
