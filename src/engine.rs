@@ -55,6 +55,7 @@ impl BlazeTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
     use serde_json::json;
 
     #[test]
@@ -84,10 +85,11 @@ mod tests {
 
         assert_eq!(
             result,
-            r#"<script src="pages/test_engine_read.js"></script>
-<Style path="pages/test_engine_read.css"/>
-<div>Hello World</div>
-"#
+            indoc! {r#"
+                <script src="pages/test_engine_read.js"></script>
+                <Style path="pages/test_engine_read.css"/>
+                <div>Hello World</div>
+            "#}
         );
     }
 }
