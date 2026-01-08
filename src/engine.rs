@@ -36,6 +36,7 @@ impl BlazeTemplate {
         self
     }
 
+    /// transform an HTML page template path into an HTML String
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
@@ -81,6 +82,12 @@ mod tests {
             .render_page("pages/test_engine_read.html", &data)
             .unwrap();
 
-        assert_eq!(result, "<div>Hello World</div>\n");
+        assert_eq!(
+            result,
+            r#"<script src="pages/test_engine_read.js"></script>
+<Style path="pages/test_engine_read.css"/>
+<div>Hello World</div>
+"#
+        );
     }
 }
