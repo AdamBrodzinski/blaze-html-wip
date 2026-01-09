@@ -46,7 +46,7 @@ pub fn parse_style(input: &str) -> IResult<&str, TemplateNode> {
     .parse(input)
 }
 
-fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>, tag_name: &'static str) -> (String, String) {
+fn separate_path_attr(attrs: Vec<(&str, &str)>, tag_name: &'static str) -> (String, String) {
     let mut src_path: Option<&str> = None;
     let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
 
@@ -68,11 +68,12 @@ fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>, tag_name: &'static str) -
         None => panic!("'path' is a required field of the {} /> tag", tag_name),
     };
 
-    dbg!(&src_path);
-    let hash = hash_file(src_path).unwrap();
-    dbg!(&hash);
+    let src_url = match hash_file(src_path).ok() {
+        Some(hash) => format!("{src_path}?{hash}"),
+        None => src_path.to_string(),
+    };
 
-    (format!("{src_path}?{hash}"), passthrough_attrs)
+    (src_url, passthrough_attrs)
 }
 
 fn hash_file(path: &str) -> std::io::Result<String> {
