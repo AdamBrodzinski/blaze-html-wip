@@ -76,23 +76,10 @@ fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>, tag_name: &'static str) -
 }
 
 fn hash_file(path: &str) -> std::io::Result<String> {
-    use blake3::Hasher;
-    use std::fs::File;
-    use std::io::{self, Read};
-
-    let mut file = File::open(path)?;
-    let mut hasher = Hasher::new();
-    let mut buffer = [0u8; 8192];
-
-    loop {
-        let bytes_read = file.read(&mut buffer)?;
-        if bytes_read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..bytes_read]);
-    }
-
-    Ok(hasher.finalize().to_hex().to_string())
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = blake3::Hasher::new();
+    hasher.update_reader(&mut file)?;
+    Ok(hasher.finalize().to_hex()[..32].to_string())
 }
 
 #[cfg(test)]
@@ -107,7 +94,8 @@ mod tests {
         fn adds_cache_busting_query_param() {
             let template = r#"<Script path="test_files/asset.js"    />"#;
             let (_remaining, node) = parse_script(template).unwrap();
-            let expected_text = r#"<script src="test_files/asset.js?a6f2ed7be4c8834436f238d65249b65192dba677b0124038807e82ce39617fbf"></script>"#;
+            let expected_text =
+                r#"<script src="test_files/asset.js?a6f2ed7be4c8834436f238d65249b651"></script>"#;
             assert_eq!(node, TemplateNode::Asset(expected_text.into()));
         }
     }
