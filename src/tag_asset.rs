@@ -46,10 +46,7 @@ pub fn parse_style(input: &str) -> IResult<&str, TemplateNode> {
     .parse(input)
 }
 
-fn separate_path_attr<'a>(
-    attrs: Vec<(&str, &'a str)>,
-    tag_name: &'static str,
-) -> (&'a str, String) {
+fn separate_path_attr<'a>(attrs: Vec<(&str, &'a str)>, tag_name: &'static str) -> (String, String) {
     let mut src_path: Option<&str> = None;
     let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
 
@@ -70,13 +67,50 @@ fn separate_path_attr<'a>(
         Some(path) => path,
         None => panic!("'path' is a required field of the {} /> tag", tag_name),
     };
-    (src_path, passthrough_attrs)
+
+    dbg!(&src_path);
+    let hash = hash_file(src_path).unwrap();
+    dbg!(&hash);
+
+    (format!("{src_path}?{hash}"), passthrough_attrs)
+}
+
+fn hash_file(path: &str) -> std::io::Result<String> {
+    use blake3::Hasher;
+    use std::fs::File;
+    use std::io::{self, Read};
+
+    let mut file = File::open(path)?;
+    let mut hasher = Hasher::new();
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = file.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hasher.finalize().to_hex().to_string())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use indoc::indoc;
+
+    mod query_param {
+        use super::*;
+
+        #[test]
+        fn adds_cache_busting_query_param() {
+            let template = r#"<Script path="test_files/asset.js"    />"#;
+            let (_remaining, node) = parse_script(template).unwrap();
+            let expected_text = r#"<script src="test_files/asset.js?a6f2ed7be4c8834436f238d65249b65192dba677b0124038807e82ce39617fbf"></script>"#;
+            assert_eq!(node, TemplateNode::Asset(expected_text.into()));
+        }
+    }
 
     mod script {
         use super::*;
