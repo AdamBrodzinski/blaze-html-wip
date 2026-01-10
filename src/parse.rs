@@ -1,10 +1,10 @@
 use nom::Parser;
 use nom::branch::alt;
 use nom::multi::many0;
-use nom_language::error::{VerboseError, convert_error};
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
+use crate::error::{BlazeError, convert_error};
 
 pub fn parse_template_to_ast(
     page_template: &str,
@@ -16,7 +16,7 @@ pub fn parse_template_to_ast(
         crate::text::parse_text,
     )))
     .parse(page_template)
-    .map_err(|e| format_verbose_error(page_template, e))?;
+    .map_err(|e| format_blaze_error(page_template, e))?;
 
     if !remaining.is_empty() {
         return Err(format!(
@@ -28,7 +28,7 @@ pub fn parse_template_to_ast(
     Ok(nodes)
 }
 
-fn format_verbose_error(input: &str, err: nom::Err<VerboseError<&str>>) -> String {
+fn format_blaze_error(input: &str, err: nom::Err<BlazeError<&str>>) -> String {
     match err {
         nom::Err::Incomplete(_) => "Incomplete input".to_string(),
         nom::Err::Error(e) | nom::Err::Failure(e) => convert_error(input, e),
@@ -124,7 +124,7 @@ mod tests {
         }
     }
 
-    mod parse_err {
+    mod parse_asset_err {
         use super::*;
         use indoc::indoc;
         use serde_json::json;
@@ -138,19 +138,32 @@ mod tests {
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
             println!("{}", &result_err);
             assert!(result_err.contains("<Script"));
-            assert!(result_err.contains(r#"foo="bar />"#));
+            assert!(result_err.contains("missing closing quote"));
         }
 
         #[test]
         fn missing_asset_path_attr() {
             let template = indoc! {r#"
+               Foo
                <Script foo="bar" />
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
             println!("{}", &result_err);
             assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("path attribute required"));
+            assert!(result_err.contains("path is a required attribute"));
+        }
+
+        #[test]
+        fn missing_closing_tag() {
+            let template = indoc! {r#"
+                Before <Script path="test_files/asset.js" After
+            "#};
+            let data = json!(());
+            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            println!("{}", &result_err);
+            assert!(result_err.contains("<Script"));
+            assert!(result_err.contains("missing closing quote"));
         }
     }
 }

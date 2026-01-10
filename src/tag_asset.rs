@@ -28,20 +28,16 @@ pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
         "Script tag",
         (
             tag("<Script"),
-            cut(context(
-                "path attribute required",
-                map_res(
-                    (
-                        many0(preceded(multispace1, parse_attr)),
-                        pair(multispace0, tag("/>")),
-                    ),
-                    |(attrs, _)| {
-                        let (src_path, other_attrs) = separate_path_attr(attrs, "<Script")?;
-                        let text =
-                            format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
-                        Ok::<_, String>(TemplateNode::Asset(text))
-                    },
+            cut(map_res(
+                (
+                    many0(preceded(multispace1, parse_attr)),
+                    pair(multispace0, context("closing tag", tag("/>"))),
                 ),
+                |(attrs, _)| {
+                    let (src_path, other_attrs) = separate_path_attr(attrs, "<Script")?;
+                    let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
+                    Ok::<_, String>(TemplateNode::Asset(text))
+                },
             )),
         )
             .map(|(_, node)| node),
@@ -54,22 +50,19 @@ pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
         "Style tag",
         (
             tag("<Style"),
-            cut(context(
-                "path attribute required",
-                map_res(
-                    (
-                        many0(preceded(multispace1, parse_attr)),
-                        pair(multispace0, tag("/>")),
-                    ),
-                    |(attrs, _)| {
-                        let (src_path, other_attrs) = separate_path_attr(attrs, "<Style")?;
-                        let text = format!(
-                            r#"<link rel="stylesheet" href="{}"{}>"#,
-                            src_path, other_attrs
-                        );
-                        Ok::<_, String>(TemplateNode::Asset(text))
-                    },
+            cut(map_res(
+                (
+                    many0(preceded(multispace1, parse_attr)),
+                    pair(multispace0, context("closing tag", tag("/>"))),
                 ),
+                |(attrs, _)| {
+                    let (src_path, other_attrs) = separate_path_attr(attrs, "<Style")?;
+                    let text = format!(
+                        r#"<link rel="stylesheet" href="{}"{}>"#,
+                        src_path, other_attrs
+                    );
+                    Ok::<_, String>(TemplateNode::Asset(text))
+                },
             )),
         )
             .map(|(_, node)| node),
@@ -99,6 +92,7 @@ fn separate_path_attr(
 
     let src_path = match src_path {
         Some(path) => path,
+        // custom error trait will convert Err(String) to a nom context error
         None => return Err(format!("path is a required attribute of {tag_name} />")),
     };
 
