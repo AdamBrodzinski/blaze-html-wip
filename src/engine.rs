@@ -17,9 +17,11 @@ pub struct BlazeTemplate {
 
 impl Default for BlazeTemplate {
     fn default() -> Self {
+        let cwd = std::env::current_dir().expect("Expected the current directory to be found");
+        let project_path = cwd.to_string_lossy().into_owned();
         Self {
             dev: false,
-            project_path: env!("CARGO_MANIFEST_DIR").to_string(),
+            project_path,
             root_dir: "src".to_string(),
             ast_nodes: Arc::new(RwLock::new(HashMap::new())),
         }
@@ -74,6 +76,7 @@ impl BlazeTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::formatdoc;
     use serde_json::json;
 
     #[test]
@@ -104,11 +107,22 @@ mod tests {
             .render_page("pages/test_engine_read.html", &data)
             .unwrap();
 
-        let expected = format!(
-            "<script src=\"test_files/pages/test_engine_read.js?{JS_HASH}\"></script>\n\
-             <link rel=\"stylesheet\" href=\"test_files/pages/test_engine_read.css?{CSS_HASH}\">\n\
-             <div>Hello World</div>\n"
-        );
+        let expected = formatdoc! {r#"
+            <script src="test_files/pages/test_engine_read.js?{JS_HASH}"></script>
+            <link rel="stylesheet" href="test_files/pages/test_engine_read.css?{CSS_HASH}">
+            <div>Hello World</div>
+        "#};
         assert_eq!(result, expected);
+    }
+
+    #[test]
+    fn compile_page_caches_ast() {
+        let blaze = BlazeTemplate::new().set_root_directory("test_files");
+        blaze
+            .compile_page_template("pages/test_engine_read.html")
+            .unwrap();
+
+        let ast_node_len = blaze.ast_nodes.read().unwrap().len();
+        assert_eq!(ast_node_len, 1);
     }
 }
