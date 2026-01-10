@@ -15,8 +15,23 @@
       "Bash(cargo run:*)",
       "Bash(cat:*)",
       "Bash(RUST_BACKTRACE=1 cargo bench:*)",
-      "mcp__context7__query-docs"
+      "mcp__context7__query-docs",
+      "Bash(cargo clippy:*)",
+      "Bash(find:*)"
     ],
     "deny": []
+  },
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "cargo lint"
+          }
+        ]
+      }
+    ]
   }
 }
