@@ -11,49 +11,59 @@
 //!
 
 #![allow(unused)]
-use nom::IResult;
+use nom::Parser;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::map;
+use nom::combinator::{cut, map};
+use nom::error::context;
 use nom::multi::many0;
 use nom::sequence::{pair, preceded};
 
+use crate::VResult;
 use crate::ast::TemplateNode;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
-use nom::Parser;
-
-pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
-    map(
-        (
-            tag("<Script"),
-            many0(preceded(multispace1, parse_attr)),
-            pair(multispace0, tag("/>")),
+pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
+    context(
+        "Script tag",
+        map(
+            (
+                tag("<Script"),
+                cut((
+                    many0(preceded(multispace1, parse_attr)),
+                    pair(multispace0, tag("/>")),
+                )),
+            ),
+            |(_, (attrs, _))| {
+                let (src_path, other_attrs) = separate_path_attr(attrs, "<Script path='../path'");
+                let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
+                TemplateNode::Asset(text)
+            },
         ),
-        |(_, attrs, _)| {
-            let (src_path, other_attrs) = separate_path_attr(attrs, "<Script path='../path'");
-            let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
-            TemplateNode::Asset(text)
-        },
     )
     .parse(input)
 }
 
-pub fn parse_style(input: &str) -> IResult<&str, TemplateNode> {
-    map(
-        (
-            tag("<Style"),
-            many0(preceded(multispace1, parse_attr)),
-            pair(multispace0, tag("/>")),
+pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
+    context(
+        "Style tag",
+        map(
+            (
+                tag("<Style"),
+                cut((
+                    many0(preceded(multispace1, parse_attr)),
+                    pair(multispace0, tag("/>")),
+                )),
+            ),
+            |(_, (attrs, _))| {
+                let (src_path, other_attrs) = separate_path_attr(attrs, "<Style path='../path'");
+                let text = format!(
+                    r#"<link rel="stylesheet" href="{}"{}>"#,
+                    src_path, other_attrs
+                );
+                TemplateNode::Asset(text)
+            },
         ),
-        |(_, attrs, _)| {
-            let (src_path, other_attrs) = separate_path_attr(attrs, "<Style path='../path'");
-            let text = format!(
-                r#"<link rel="stylesheet" href="{}"{}>"#,
-                src_path, other_attrs
-            );
-            TemplateNode::Asset(text)
-        },
     )
     .parse(input)
 }
@@ -86,9 +96,8 @@ fn separate_path_attr(attrs: Vec<(&str, &str)>, tag_name: &'static str) -> (Stri
 
 #[cfg(feature = "cache-bust")]
 fn get_cache_param(path: &str) -> String {
-    let hash = hash_file(path).unwrap_or_else(|e| {
-        panic!("Failed to hash asset file '{path}': {e}")
-    });
+    let hash =
+        hash_file(path).unwrap_or_else(|e| panic!("Failed to hash asset file '{path}': {e}"));
     format!("?{hash}")
 }
 

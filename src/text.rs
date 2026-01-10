@@ -1,13 +1,19 @@
-use nom::combinator::verify;
-use nom::{IResult, Parser};
-use nom::{branch::alt, bytes::complete::take_until, combinator::rest};
+use nom::Parser;
+use nom::branch::alt;
+use nom::bytes::complete::take_until;
+use nom::combinator::{rest, verify};
+use nom::error::context;
 
+use crate::VResult;
 use crate::ast::TemplateNode;
 
-pub fn parse_text(input: &str) -> IResult<&str, TemplateNode> {
-    let (remaining, text) = verify(
-        alt((take_until("<Script"), take_until("<Style"), rest)),
-        |s: &str| !s.is_empty(),
+pub fn parse_text(input: &str) -> VResult<'_, TemplateNode> {
+    let (remaining, text) = context(
+        "text content",
+        verify(
+            alt((take_until("<Script"), take_until("<Style"), rest)),
+            |s: &str| !s.is_empty(),
+        ),
     )
     .parse(input)?;
 

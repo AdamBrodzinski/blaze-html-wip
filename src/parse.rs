@@ -1,5 +1,7 @@
 use nom::Parser;
-use nom::{branch::alt, multi::many0};
+use nom::branch::alt;
+use nom::multi::many0;
+use nom_language::error::{VerboseError, convert_error};
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
@@ -14,11 +16,23 @@ pub fn parse_template_to_ast(
         crate::text::parse_text,
     )))
     .parse(page_template)
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| format_verbose_error(page_template, e))?;
 
-    debug_assert!(remaining.is_empty());
+    if !remaining.is_empty() {
+        return Err(format!(
+            "Failed to parse template. Unparsed content starting at: {:?}",
+            &remaining[..remaining.len().min(50)]
+        ));
+    }
 
     Ok(nodes)
+}
+
+fn format_verbose_error(input: &str, err: nom::Err<VerboseError<&str>>) -> String {
+    match err {
+        nom::Err::Incomplete(_) => "Incomplete input".to_string(),
+        nom::Err::Error(e) | nom::Err::Failure(e) => convert_error(input, e),
+    }
 }
 
 pub fn render_ast(
@@ -57,7 +71,8 @@ mod tests {
             let template = r#"Before <Script path='test_files/asset.js' /> After"#;
             let data = json!(());
             let html = render_template(template, &data).unwrap();
-            let expected = format!(r#"Before <script src="test_files/asset.js?{JS_HASH}"></script> After"#);
+            let expected =
+                format!(r#"Before <script src="test_files/asset.js?{JS_HASH}"></script> After"#);
             assert_eq!(html, expected);
         }
     }
@@ -85,12 +100,27 @@ mod tests {
                 ast,
                 [
                     TemplateNode::Text("Before\n".into()),
-                    TemplateNode::Asset(format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#)),
+                    TemplateNode::Asset(format!(
+                        r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#
+                    )),
                     TemplateNode::Text("\n".into()),
-                    TemplateNode::Asset(format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#)),
+                    TemplateNode::Asset(format!(
+                        r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#
+                    )),
                     TemplateNode::Text("\nAfter\n".into()),
                 ]
             );
+        }
+
+        #[test]
+        fn parse_ast_err() {
+            let template = indoc! {r#"
+                Before <Script path="test_files/asset.js foo="bar /> After
+            "#};
+            let data = json!(());
+            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            assert!(result_err.contains("<Script"));
+            assert!(result_err.contains(r#"foo="bar />"#));
         }
     }
 }
