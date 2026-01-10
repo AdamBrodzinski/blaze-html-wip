@@ -123,4 +123,34 @@ mod tests {
             assert!(result_err.contains(r#"foo="bar />"#));
         }
     }
+
+    mod parse_err {
+        use super::*;
+        use indoc::indoc;
+        use serde_json::json;
+
+        #[test]
+        fn missing_attr_quote() {
+            let template = indoc! {r#"
+                Before <Script path="test_files/asset.js" foo="bar /> After
+            "#};
+            let data = json!(());
+            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            println!("{}", &result_err);
+            assert!(result_err.contains("<Script"));
+            assert!(result_err.contains(r#"foo="bar />"#));
+        }
+
+        #[test]
+        fn missing_asset_path_attr() {
+            let template = indoc! {r#"
+               <Script foo="bar" />
+            "#};
+            let data = json!(());
+            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            println!("{}", &result_err);
+            assert!(result_err.contains("<Script"));
+            assert!(result_err.contains("path attribute required"));
+        }
+    }
 }

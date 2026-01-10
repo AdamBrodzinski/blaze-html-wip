@@ -11,8 +11,12 @@ This is a Rust library called `blaze-html` that provides a fast, lightweight HTM
 The library consists of a single module with two main public functions:
 
 - `BlazeTemplate::new()` - template engine struct, caches ast, configures dev overrides
-- `blaze_template.render_page("pages/home.html", data)` - reads template, transforms to ast with JSON data, returns String
-- `blaze_template.render_str("Hello @name", json!({"name": "Foo"}))` - reads template from str
+  - optional template engine config:
+    - `.enable_dev(true)` - disables caching for local development
+    - `.set_root_dir("src")` - sets the template root dir, relative to the cwd
+- `.blaze_template.compile_page_template("pages/home.html", json_data)` - (optional) converts template to ast and caches for future use
+- `.blaze_template.render_page("pages/home.html", json_data)` - reads template, transforms to ast, renders ast with data returning String
+- `.blaze_template.render_str("tmpl_name", "Hello @name", json_data)` - reads template from str
 
 ### Template Syntax
 

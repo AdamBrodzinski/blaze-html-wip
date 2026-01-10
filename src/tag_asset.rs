@@ -14,7 +14,7 @@
 use nom::Parser;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::{cut, map};
+use nom::combinator::{cut, map_res};
 use nom::error::context;
 use nom::multi::many0;
 use nom::sequence::{pair, preceded};
@@ -26,20 +26,25 @@ use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
     context(
         "Script tag",
-        map(
-            (
-                tag("<Script"),
-                cut((
-                    many0(preceded(multispace1, parse_attr)),
-                    pair(multispace0, tag("/>")),
-                )),
-            ),
-            |(_, (attrs, _))| {
-                let (src_path, other_attrs) = separate_path_attr(attrs, "<Script path='../path'");
-                let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
-                TemplateNode::Asset(text)
-            },
-        ),
+        (
+            tag("<Script"),
+            cut(context(
+                "path attribute required",
+                map_res(
+                    (
+                        many0(preceded(multispace1, parse_attr)),
+                        pair(multispace0, tag("/>")),
+                    ),
+                    |(attrs, _)| {
+                        let (src_path, other_attrs) = separate_path_attr(attrs, "<Script")?;
+                        let text =
+                            format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
+                        Ok::<_, String>(TemplateNode::Asset(text))
+                    },
+                ),
+            )),
+        )
+            .map(|(_, node)| node),
     )
     .parse(input)
 }
@@ -47,28 +52,35 @@ pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
 pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
     context(
         "Style tag",
-        map(
-            (
-                tag("<Style"),
-                cut((
-                    many0(preceded(multispace1, parse_attr)),
-                    pair(multispace0, tag("/>")),
-                )),
-            ),
-            |(_, (attrs, _))| {
-                let (src_path, other_attrs) = separate_path_attr(attrs, "<Style path='../path'");
-                let text = format!(
-                    r#"<link rel="stylesheet" href="{}"{}>"#,
-                    src_path, other_attrs
-                );
-                TemplateNode::Asset(text)
-            },
-        ),
+        (
+            tag("<Style"),
+            cut(context(
+                "path attribute required",
+                map_res(
+                    (
+                        many0(preceded(multispace1, parse_attr)),
+                        pair(multispace0, tag("/>")),
+                    ),
+                    |(attrs, _)| {
+                        let (src_path, other_attrs) = separate_path_attr(attrs, "<Style")?;
+                        let text = format!(
+                            r#"<link rel="stylesheet" href="{}"{}>"#,
+                            src_path, other_attrs
+                        );
+                        Ok::<_, String>(TemplateNode::Asset(text))
+                    },
+                ),
+            )),
+        )
+            .map(|(_, node)| node),
     )
     .parse(input)
 }
 
-fn separate_path_attr(attrs: Vec<(&str, &str)>, tag_name: &'static str) -> (String, String) {
+fn separate_path_attr(
+    attrs: Vec<(&str, &str)>,
+    tag_name: &'static str,
+) -> Result<(String, String), String> {
     let mut src_path: Option<&str> = None;
     let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
 
@@ -87,11 +99,11 @@ fn separate_path_attr(attrs: Vec<(&str, &str)>, tag_name: &'static str) -> (Stri
 
     let src_path = match src_path {
         Some(path) => path,
-        None => panic!("'path' is a required field of the {} /> tag", tag_name),
+        None => return Err(format!("path is a required attribute of {tag_name} />")),
     };
 
     let cache_param = get_cache_param(src_path);
-    (format!("{src_path}{cache_param}"), passthrough_attrs)
+    Ok((format!("{src_path}{cache_param}"), passthrough_attrs))
 }
 
 #[cfg(feature = "cache-bust")]
