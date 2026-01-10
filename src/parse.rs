@@ -16,8 +16,6 @@ pub fn parse_template_to_ast(
     .parse(page_template)
     .map_err(|e| e.to_string())?;
 
-    dbg!(&nodes);
-    dbg!(remaining);
     debug_assert!(remaining.is_empty());
 
     Ok(nodes)

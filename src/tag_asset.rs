@@ -14,7 +14,7 @@
 use nom::IResult;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::map_res;
+use nom::combinator::map;
 use nom::multi::many0;
 use nom::sequence::{pair, preceded};
 
@@ -24,44 +24,41 @@ use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 use nom::Parser;
 
 pub fn parse_script(input: &str) -> IResult<&str, TemplateNode> {
-    map_res(
+    map(
         (
             tag("<Script"),
             many0(preceded(multispace1, parse_attr)),
             pair(multispace0, tag("/>")),
         ),
         |(_, attrs, _)| {
-            let (src_path, other_attrs) = separate_path_attr(attrs, "<Script src='../path'")?;
+            let (src_path, other_attrs) = separate_path_attr(attrs, "<Script path='../path'");
             let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
-            Ok::<_, std::io::Error>(TemplateNode::Asset(text))
+            TemplateNode::Asset(text)
         },
     )
     .parse(input)
 }
 
 pub fn parse_style(input: &str) -> IResult<&str, TemplateNode> {
-    map_res(
+    map(
         (
             tag("<Style"),
             many0(preceded(multispace1, parse_attr)),
             pair(multispace0, tag("/>")),
         ),
         |(_, attrs, _)| {
-            let (src_path, other_attrs) = separate_path_attr(attrs, "<Style src='../path'")?;
+            let (src_path, other_attrs) = separate_path_attr(attrs, "<Style path='../path'");
             let text = format!(
                 r#"<link rel="stylesheet" href="{}"{}>"#,
                 src_path, other_attrs
             );
-            Ok::<_, std::io::Error>(TemplateNode::Asset(text))
+            TemplateNode::Asset(text)
         },
     )
     .parse(input)
 }
 
-fn separate_path_attr(
-    attrs: Vec<(&str, &str)>,
-    tag_name: &'static str,
-) -> Result<(String, String), std::io::Error> {
+fn separate_path_attr(attrs: Vec<(&str, &str)>, tag_name: &'static str) -> (String, String) {
     let mut src_path: Option<&str> = None;
     let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
 
@@ -83,19 +80,21 @@ fn separate_path_attr(
         None => panic!("'path' is a required field of the {} /> tag", tag_name),
     };
 
-    let cache_param = get_cache_param(src_path)?;
-    Ok((format!("{src_path}{cache_param}"), passthrough_attrs))
+    let cache_param = get_cache_param(src_path);
+    (format!("{src_path}{cache_param}"), passthrough_attrs)
 }
 
 #[cfg(feature = "cache-bust")]
-fn get_cache_param(path: &str) -> Result<String, std::io::Error> {
-    let hash = hash_file(path)?;
-    Ok(format!("?{hash}"))
+fn get_cache_param(path: &str) -> String {
+    let hash = hash_file(path).unwrap_or_else(|e| {
+        panic!("Failed to hash asset file '{path}': {e}")
+    });
+    format!("?{hash}")
 }
 
 #[cfg(not(feature = "cache-bust"))]
-fn get_cache_param(_path: &str) -> Result<String, std::io::Error> {
-    Ok(String::new())
+fn get_cache_param(_path: &str) -> String {
+    String::new()
 }
 
 #[cfg(feature = "cache-bust")]
@@ -172,10 +171,10 @@ mod tests {
         }
 
         #[test]
-        fn fails_on_missing_file() {
+        #[should_panic(expected = "Failed to hash asset file")]
+        fn panics_on_missing_file() {
             let template = r#"<Script path="nonexistent.js" />"#;
-            let result = parse_script(template);
-            assert!(result.is_err());
+            let _ = parse_script(template);
         }
     }
 
@@ -205,10 +204,10 @@ mod tests {
         }
 
         #[test]
-        fn fails_on_missing_file() {
+        #[should_panic(expected = "Failed to hash asset file")]
+        fn panics_on_missing_file() {
             let template = r#"<Style path="nonexistent.css" />"#;
-            let result = parse_style(template);
-            assert!(result.is_err());
+            let _ = parse_style(template);
         }
     }
 }
