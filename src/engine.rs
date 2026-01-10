@@ -1,13 +1,18 @@
-use serde_json::Value;
-use std::path::PathBuf;
+use serde_json::{Value, json};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+};
 
-use crate::parse;
+use crate::{ast::TemplateNode, parse};
 
 #[derive(Debug, Clone)]
 pub struct BlazeTemplate {
     pub dev: bool,
     pub(crate) project_path: String,
     pub(crate) root_dir: String,
+    pub(crate) ast_nodes: Arc<RwLock<HashMap<String, Vec<TemplateNode>>>>,
 }
 
 impl Default for BlazeTemplate {
@@ -16,6 +21,7 @@ impl Default for BlazeTemplate {
             dev: false,
             project_path: env!("CARGO_MANIFEST_DIR").to_string(),
             root_dir: "src".to_string(),
+            ast_nodes: Arc::new(RwLock::new(HashMap::new())),
         }
     }
 }
@@ -34,6 +40,19 @@ impl BlazeTemplate {
     pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
         self.dev = dev_enabled;
         self
+    }
+
+    /// transform an HTML page template path into an HTML String
+    pub fn compile_page_template(&self, rel_page_path: &str) -> Result<(), String> {
+        let page_template = self.read_template(rel_page_path)?;
+        let ast_nodes = parse::parse_template_to_ast(&page_template, &json!(()))?;
+        if !self.dev {
+            self.ast_nodes
+                .write()
+                .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
+                .insert(rel_page_path.to_string(), ast_nodes);
+        }
+        Ok(())
     }
 
     /// transform an HTML page template path into an HTML String
