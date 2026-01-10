@@ -50,12 +50,15 @@ mod tests {
         use super::*;
         use serde_json::json;
 
+        const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
+
         #[test]
         fn render_basic_html() {
-            let template = r#"Before <Script path='foo.js' /> After"#;
+            let template = r#"Before <Script path='test_files/asset.js' /> After"#;
             let data = json!(());
             let html = render_template(template, &data).unwrap();
-            assert_eq!(html, r#"Before <script src="foo.js"></script> After"#);
+            let expected = format!(r#"Before <script src="test_files/asset.js?{JS_HASH}"></script> After"#);
+            assert_eq!(html, expected);
         }
     }
 
@@ -64,12 +67,15 @@ mod tests {
         use indoc::indoc;
         use serde_json::json;
 
+        const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
+        const CSS_HASH: &str = "a0ff2dc6b477abd5ca51c463f720d3ab";
+
         #[test]
         fn parse_ast() {
             let template = indoc! {r#"
                 Before
-                <Script path="foo.js" />
-                <Style path="bar.css" />
+                <Script path="test_files/asset.js" />
+                <Style path="test_files/asset.css" />
                 After
             "#};
             let data = json!(());
@@ -79,9 +85,9 @@ mod tests {
                 ast,
                 [
                     TemplateNode::Text("Before\n".into()),
-                    TemplateNode::Asset(r#"<script src="foo.js"></script>"#.into()),
+                    TemplateNode::Asset(format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#)),
                     TemplateNode::Text("\n".into()),
-                    TemplateNode::Asset(r#"<link rel="stylesheet" href="bar.css">"#.into()),
+                    TemplateNode::Asset(format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#)),
                     TemplateNode::Text("\nAfter\n".into()),
                 ]
             );

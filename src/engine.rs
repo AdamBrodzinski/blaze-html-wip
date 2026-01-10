@@ -74,7 +74,6 @@ impl BlazeTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indoc::indoc;
     use serde_json::json;
 
     #[test]
@@ -94,6 +93,9 @@ mod tests {
         assert_eq!(blaze.dev, true);
     }
 
+    const JS_HASH: &str = "44f4b32954b6da985de1cfd924eacdda";
+    const CSS_HASH: &str = "5c7ead8de806c5ed42f44b22c63183ee";
+
     #[test]
     fn fetches_template_and_passes_to_build() {
         let blaze = BlazeTemplate::new().set_root_directory("test_files");
@@ -102,13 +104,11 @@ mod tests {
             .render_page("pages/test_engine_read.html", &data)
             .unwrap();
 
-        assert_eq!(
-            result,
-            indoc! {r#"
-                <script src="pages/test_engine_read.js"></script>
-                <link rel="stylesheet" href="pages/test_engine_read.css">
-                <div>Hello World</div>
-            "#}
+        let expected = format!(
+            "<script src=\"test_files/pages/test_engine_read.js?{JS_HASH}\"></script>\n\
+             <link rel=\"stylesheet\" href=\"test_files/pages/test_engine_read.css?{CSS_HASH}\">\n\
+             <div>Hello World</div>\n"
         );
+        assert_eq!(result, expected);
     }
 }
