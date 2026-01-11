@@ -12,23 +12,14 @@ use crate::{ast::TemplateNode, parse};
 /// # Example
 /// ```ignore
 /// let blaze = BlazeTemplate::builder()
-///     .root_dir("templates")
+///     .template_root_dir("templates")
 ///     .dev(true)
 ///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BlazeTemplateBuilder {
     dev: bool,
-    root_dir: String,
-}
-
-impl Default for BlazeTemplateBuilder {
-    fn default() -> Self {
-        Self {
-            dev: false,
-            root_dir: "src".to_string(),
-        }
-    }
+    template_root_dir: Option<PathBuf>,
 }
 
 impl BlazeTemplateBuilder {
@@ -37,10 +28,12 @@ impl BlazeTemplateBuilder {
         Self::default()
     }
 
-    /// Set the root directory for templates, relative to the project path.
-    /// Default is `"src"`.
-    pub fn root_dir(mut self, path: &str) -> Self {
-        self.root_dir = path.to_string();
+    /// Set the root directory for templates.
+    ///
+    /// Relative paths are resolved against the current working directory at build time.
+    /// Default is the current working directory.
+    pub fn template_root_dir(mut self, path: impl Into<PathBuf>) -> Self {
+        self.template_root_dir = Some(path.into());
         self
     }
 
@@ -57,13 +50,17 @@ impl BlazeTemplateBuilder {
     /// Panics if the current working directory cannot be determined.
     pub fn build(self) -> BlazeTemplate {
         let cwd = std::env::current_dir().expect("could not determine current directory");
-        let project_path = cwd.to_string_lossy().into_owned();
+
+        let template_root_dir = match self.template_root_dir {
+            Some(path) if path.is_absolute() => path,
+            Some(path) => cwd.join(path),
+            None => cwd,
+        };
 
         BlazeTemplate {
             inner: Arc::new(BlazeTemplateInner {
                 dev: self.dev,
-                project_path,
-                root_dir: self.root_dir,
+                template_root_dir,
                 ast_nodes: RwLock::new(HashMap::new()),
             }),
         }
@@ -75,7 +72,7 @@ impl BlazeTemplateBuilder {
 /// # Example
 /// ```ignore
 /// let blaze = BlazeTemplate::builder()
-///     .root_dir("templates")
+///     .template_root_dir("templates")
 ///     .dev(true)
 ///     .build();
 ///
@@ -88,8 +85,7 @@ pub struct BlazeTemplate {
 
 struct BlazeTemplateInner {
     dev: bool,
-    project_path: String,
-    root_dir: String,
+    template_root_dir: PathBuf,
     ast_nodes: RwLock<HashMap<String, Vec<TemplateNode>>>,
 }
 
@@ -97,8 +93,7 @@ impl std::fmt::Debug for BlazeTemplate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BlazeTemplate")
             .field("dev", &self.inner.dev)
-            .field("project_path", &self.inner.project_path)
-            .field("root_dir", &self.inner.root_dir)
+            .field("template_root_dir", &self.inner.template_root_dir)
             .finish_non_exhaustive()
     }
 }
@@ -127,9 +122,9 @@ impl BlazeTemplate {
         self.inner.dev
     }
 
-    /// Returns the configured root directory.
-    pub fn root_dir(&self) -> &str {
-        &self.inner.root_dir
+    /// Returns the configured template root directory.
+    pub fn template_root_dir(&self) -> &std::path::Path {
+        &self.inner.template_root_dir
     }
 
     /// Pre-compile a template and cache its AST for faster rendering.
@@ -157,12 +152,7 @@ impl BlazeTemplate {
     }
 
     fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        let path_segments = [
-            self.inner.project_path.as_str(),
-            self.inner.root_dir.as_str(),
-            rel_page_path,
-        ];
-        let template_path = path_segments.iter().collect::<PathBuf>();
+        let template_path = self.inner.template_root_dir.join(rel_page_path);
         std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
     }
 }
@@ -175,24 +165,26 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        assert_eq!(blaze.root_dir(), "src");
+        let cwd = std::env::current_dir().unwrap();
+        assert_eq!(blaze.template_root_dir(), cwd);
         assert_eq!(blaze.is_dev(), false);
     }
 
     #[test]
     fn test_builder_pattern() {
         let blaze = BlazeTemplate::builder()
-            .root_dir("customer/pages")
+            .template_root_dir("customer/pages")
             .dev(true)
             .build();
 
-        assert_eq!(blaze.root_dir(), "customer/pages");
+        assert!(blaze.template_root_dir().ends_with("customer/pages"));
+        assert!(blaze.template_root_dir().is_absolute());
         assert_eq!(blaze.is_dev(), true);
     }
 
     #[test]
     fn clone_shares_cache() {
-        let blaze1 = BlazeTemplate::builder().root_dir("test_files").build();
+        let blaze1 = BlazeTemplate::builder().template_root_dir("test_files").build();
         let blaze2 = blaze1.clone();
 
         // Both point to the same inner Arc
@@ -218,7 +210,7 @@ mod tests {
 
         #[test]
         fn fetches_template_and_passes_to_build() {
-            let blaze = BlazeTemplate::builder().root_dir("test_files").build();
+            let blaze = BlazeTemplate::builder().template_root_dir("test_files").build();
             let data = json!(());
             let result = blaze
                 .render_page("pages/test_engine_read.html", &data)
@@ -235,7 +227,7 @@ mod tests {
 
     #[test]
     fn compile_page_caches_ast() {
-        let blaze = BlazeTemplate::builder().root_dir("test_files").build();
+        let blaze = BlazeTemplate::builder().template_root_dir("test_files").build();
         blaze
             .compile_page_template("pages/test_engine_read.html")
             .unwrap();

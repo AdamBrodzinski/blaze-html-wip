@@ -12,8 +12,8 @@ The library consists of a single module with two main public functions:
 
 - `BlazeTemplate::new()` - template engine struct, caches ast, configures dev overrides
   - optional template engine config:
-    - `.enable_dev(true)` - disables caching for local development
-    - `.set_root_dir("src")` - sets the template root dir, relative to the cwd
+    - `.dev(true)` - disables caching for local development
+    - `.template_root_dir("src")` - sets the template root dir (default: cwd)
 - `.blaze_template.compile_page_template("pages/home.html", json_data)` - (optional) converts template to ast and caches for future use
 - `.blaze_template.render_page("pages/home.html", json_data)` - reads template, transforms to ast, renders ast with data returning String
 - `.blaze_template.render_str("tmpl_name", "Hello @name", json_data)` - reads template from str
