@@ -16,10 +16,21 @@ use crate::{ast::TemplateNode, parse};
 ///     .dev(true)
 ///     .build();
 /// ```
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BlazeTemplateBuilder {
     dev: bool,
+    cache_ast: bool,
     template_root_dir: Option<PathBuf>,
+}
+
+impl Default for BlazeTemplateBuilder {
+    fn default() -> Self {
+        Self {
+            dev: false,
+            cache_ast: true,
+            template_root_dir: None,
+        }
+    }
 }
 
 impl BlazeTemplateBuilder {
@@ -44,6 +55,13 @@ impl BlazeTemplateBuilder {
         self
     }
 
+    /// Enable or disable AST caching.
+    /// Default is `true`. When disabled, templates are parsed on every render.
+    pub fn cache_ast(mut self, enabled: bool) -> Self {
+        self.cache_ast = enabled;
+        self
+    }
+
     /// Build the `BlazeTemplate` instance.
     pub fn build(self) -> BlazeTemplate {
         let template_root_dir = self.template_root_dir.unwrap_or_else(|| PathBuf::from("."));
@@ -51,6 +69,7 @@ impl BlazeTemplateBuilder {
         BlazeTemplate {
             inner: Arc::new(BlazeTemplateInner {
                 dev: self.dev,
+                cache_ast: self.cache_ast,
                 template_root_dir,
                 ast_nodes: RwLock::new(HashMap::new()),
             }),
@@ -76,8 +95,9 @@ pub struct BlazeTemplate {
 
 struct BlazeTemplateInner {
     dev: bool,
+    cache_ast: bool,
     template_root_dir: PathBuf,
-    ast_nodes: RwLock<HashMap<String, Vec<TemplateNode>>>,
+    ast_nodes: RwLock<HashMap<String, (Vec<TemplateNode>, usize)>>,
 }
 
 impl std::fmt::Debug for BlazeTemplate {
@@ -124,27 +144,59 @@ impl BlazeTemplate {
     pub fn compile_page_template(&self, rel_page_path: &str) -> Result<(), String> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, &json!(()))?;
-        if !self.inner.dev {
-            self.inner
-                .ast_nodes
-                .write()
-                .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
-                .insert(rel_page_path.to_string(), ast_nodes);
+        if !self.inner.dev && self.inner.cache_ast {
+            self.set_cached_ast(rel_page_path, ast_nodes, page_template.len())?;
         }
         Ok(())
     }
 
     /// Render a template file to an HTML string.
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
+        let should_cache = !self.inner.dev && self.inner.cache_ast;
+
+        // Try to use cached AST
+        if should_cache {
+            let cache = self
+                .inner
+                .ast_nodes
+                .read()
+                .map_err(|e| format!("AST cache read lock poisoned: {e}"))?;
+            if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
+                return parse::render_ast(cached_ast, data, *template_len);
+            }
+        }
+
+        // Cache miss or caching disabled: parse and optionally cache
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
-        let html = parse::render_ast(&ast_nodes, data, page_template.len())?;
-        Ok(html)
+        let template_len = page_template.len();
+
+        let result = parse::render_ast(&ast_nodes, data, template_len);
+
+        if should_cache {
+            self.set_cached_ast(rel_page_path, ast_nodes, template_len)?;
+        }
+
+        result
     }
 
     fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
         let template_path = self.inner.template_root_dir.join(rel_page_path);
         std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
+    }
+
+    fn set_cached_ast(
+        &self,
+        rel_page_path: &str,
+        ast: Vec<TemplateNode>,
+        len: usize,
+    ) -> Result<(), String> {
+        self.inner
+            .ast_nodes
+            .write()
+            .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
+            .insert(rel_page_path.to_string(), (ast, len));
+        Ok(())
     }
 }
 
@@ -167,13 +219,18 @@ mod tests {
             .dev(true)
             .build();
 
-        assert_eq!(blaze.template_root_dir(), std::path::Path::new("customer/pages"));
+        assert_eq!(
+            blaze.template_root_dir(),
+            std::path::Path::new("customer/pages")
+        );
         assert_eq!(blaze.is_dev(), true);
     }
 
     #[test]
     fn clone_shares_cache() {
-        let blaze1 = BlazeTemplate::builder().template_root_dir("test_files").build();
+        let blaze1 = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
         let blaze2 = blaze1.clone();
 
         // Both point to the same inner Arc
@@ -199,7 +256,9 @@ mod tests {
 
         #[test]
         fn fetches_template_and_passes_to_build() {
-            let blaze = BlazeTemplate::builder().template_root_dir("test_files").build();
+            let blaze = BlazeTemplate::builder()
+                .template_root_dir("test_files")
+                .build();
             let data = json!(());
             let result = blaze
                 .render_page("pages/test_engine_read.html", &data)
@@ -216,12 +275,56 @@ mod tests {
 
     #[test]
     fn compile_page_caches_ast() {
-        let blaze = BlazeTemplate::builder().template_root_dir("test_files").build();
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
         blaze
             .compile_page_template("pages/test_engine_read.html")
             .unwrap();
 
         let ast_node_len = blaze.inner.ast_nodes.read().unwrap().len();
         assert_eq!(ast_node_len, 1);
+    }
+
+    #[test]
+    fn render_page_populates_cache() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        let data = json!(());
+
+        // First render should populate cache
+        blaze
+            .render_page("pages/test_engine_read.html", &data)
+            .unwrap();
+        assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn cache_ast_disabled_skips_caching() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .cache_ast(false)
+            .build();
+        let data = json!(());
+
+        blaze
+            .render_page("pages/test_engine_read.html", &data)
+            .unwrap();
+        assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn dev_mode_skips_caching() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .dev(true)
+            .build();
+        let data = json!(());
+
+        blaze
+            .render_page("pages/test_engine_read.html", &data)
+            .unwrap();
+        assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
     }
 }
