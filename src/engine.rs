@@ -7,12 +7,47 @@ use std::{
 
 use crate::{ast::TemplateNode, parse};
 
-#[derive(Debug, Clone)]
+/// HTML template engine
+///
+/// # Example
+/// ```ignore
+/// let blaze = BlazeTemplate::new()
+///     .set_root_directory("templates")
+///     .enable_dev(true);
+///
+/// blaze.render_page("pages/about.html", json_data);
+/// ```
+#[derive(Clone)]
 pub struct BlazeTemplate {
-    pub dev: bool,
-    pub(crate) project_path: String,
-    pub(crate) root_dir: String,
-    pub(crate) ast_nodes: Arc<RwLock<HashMap<String, Vec<TemplateNode>>>>,
+    inner: Arc<BlazeTemplateInner>,
+}
+
+struct BlazeTemplateInner {
+    dev: bool,
+    project_path: String,
+    root_dir: String,
+    ast_nodes: RwLock<HashMap<String, Vec<TemplateNode>>>,
+}
+
+impl Clone for BlazeTemplateInner {
+    fn clone(&self) -> Self {
+        Self {
+            dev: self.dev,
+            project_path: self.project_path.clone(),
+            root_dir: self.root_dir.clone(),
+            ast_nodes: RwLock::new(HashMap::new()),
+        }
+    }
+}
+
+impl std::fmt::Debug for BlazeTemplate {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BlazeTemplate")
+            .field("dev", &self.inner.dev)
+            .field("project_path", &self.inner.project_path)
+            .field("root_dir", &self.inner.root_dir)
+            .finish_non_exhaustive()
+    }
 }
 
 impl Default for BlazeTemplate {
@@ -20,10 +55,12 @@ impl Default for BlazeTemplate {
         let cwd = std::env::current_dir().expect("Expected the current directory to be found");
         let project_path = cwd.to_string_lossy().into_owned();
         Self {
-            dev: false,
-            project_path,
-            root_dir: "src".to_string(),
-            ast_nodes: Arc::new(RwLock::new(HashMap::new())),
+            inner: Arc::new(BlazeTemplateInner {
+                dev: false,
+                project_path,
+                root_dir: "src".to_string(),
+                ast_nodes: RwLock::new(HashMap::new()),
+            }),
         }
     }
 }
@@ -33,23 +70,37 @@ impl BlazeTemplate {
         Self::default()
     }
 
+    /// Set the root directory for templates, relative to the project path.
     pub fn set_root_directory(mut self, path: &str) -> Self {
-        self.root_dir = path.to_string();
+        Arc::make_mut(&mut self.inner).root_dir = path.to_string();
         self
     }
 
-    /// Dev mode will disable template caching between requests
+    /// Dev mode will disable template caching between requests.
     pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
-        self.dev = dev_enabled;
+        Arc::make_mut(&mut self.inner).dev = dev_enabled;
         self
     }
 
-    /// transform an HTML page template path into an HTML String
+    /// Returns whether dev mode is enabled.
+    pub fn is_dev(&self) -> bool {
+        self.inner.dev
+    }
+
+    /// Returns the configured root directory.
+    pub fn root_dir(&self) -> &str {
+        &self.inner.root_dir
+    }
+
+    /// Pre-compile a template and cache its AST for faster rendering.
+    ///
+    /// This is useful for warming up the cache at application startup.
     pub fn compile_page_template(&self, rel_page_path: &str) -> Result<(), String> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, &json!(()))?;
-        if !self.dev {
-            self.ast_nodes
+        if !self.inner.dev {
+            self.inner
+                .ast_nodes
                 .write()
                 .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
                 .insert(rel_page_path.to_string(), ast_nodes);
@@ -57,7 +108,7 @@ impl BlazeTemplate {
         Ok(())
     }
 
-    /// transform an HTML page template path into an HTML String
+    /// Render a template file to an HTML string.
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
@@ -65,8 +116,12 @@ impl BlazeTemplate {
         Ok(html)
     }
 
-    pub(crate) fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
-        let path_segments = [&self.project_path, &self.root_dir, rel_page_path];
+    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
+        let path_segments = [
+            self.inner.project_path.as_str(),
+            self.inner.root_dir.as_str(),
+            rel_page_path,
+        ];
         let template_path = path_segments.iter().collect::<PathBuf>();
         std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
     }
@@ -80,8 +135,8 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        assert_eq!(blaze.root_dir, "src");
-        assert_eq!(blaze.dev, false);
+        assert_eq!(blaze.root_dir(), "src");
+        assert_eq!(blaze.is_dev(), false);
     }
 
     #[test]
@@ -90,8 +145,25 @@ mod tests {
             .set_root_directory("customer/pages")
             .enable_dev(true);
 
-        assert_eq!(blaze.root_dir, "customer/pages");
-        assert_eq!(blaze.dev, true);
+        assert_eq!(blaze.root_dir(), "customer/pages");
+        assert_eq!(blaze.is_dev(), true);
+    }
+
+    #[test]
+    fn clone_shares_cache() {
+        let blaze1 = BlazeTemplate::new().set_root_directory("test_files");
+        let blaze2 = blaze1.clone();
+
+        // Both point to the same inner Arc
+        assert!(Arc::ptr_eq(&blaze1.inner, &blaze2.inner));
+
+        // Compile on one, visible on the other
+        blaze1
+            .compile_page_template("pages/test_engine_read.html")
+            .unwrap();
+
+        let cache_len = blaze2.inner.ast_nodes.read().unwrap().len();
+        assert_eq!(cache_len, 1);
     }
 
     #[cfg(feature = "cache-bust")]
@@ -127,7 +199,7 @@ mod tests {
             .compile_page_template("pages/test_engine_read.html")
             .unwrap();
 
-        let ast_node_len = blaze.ast_nodes.read().unwrap().len();
+        let ast_node_len = blaze.inner.ast_nodes.read().unwrap().len();
         assert_eq!(ast_node_len, 1);
     }
 }
