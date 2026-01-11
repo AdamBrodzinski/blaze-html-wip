@@ -43,7 +43,7 @@ pub fn render_ast(
     let mut str_buff = String::with_capacity(template_len);
     for node in ast_nodes {
         match node {
-            TemplateNode::Asset(asset) => str_buff.push_str(&asset.to_html()?),
+            TemplateNode::Asset(asset) => asset.write_html(&mut str_buff)?,
             TemplateNode::Text(x) => str_buff.push_str(x),
         }
     }

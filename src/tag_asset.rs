@@ -24,30 +24,42 @@ use crate::error::make_error;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
 impl AssetNode {
-    /// Renders the asset node to HTML, optionally appending a cache-busting query param
-    pub fn to_html(&self) -> Result<String, String> {
-        let hash_suffix = get_cache_param(&self.path)?;
-        let attrs_str: String = self
-            .attrs
-            .iter()
-            .map(|(k, v)| format!(r#" {k}="{v}""#))
-            .collect();
-
-        Ok(match self.kind {
+    /// Writes the asset node HTML directly into the provided buffer.
+    /// This avoids allocations compared to returning a new String.
+    pub fn write_html(&self, buf: &mut String) -> Result<(), String> {
+        match self.kind {
             AssetKind::Script => {
-                format!(
-                    r#"<script src="{}{}"{}></script>"#,
-                    self.path, hash_suffix, attrs_str
-                )
+                buf.push_str(r#"<script src=""#);
+                buf.push_str(&self.path);
+                write_cache_param(&self.path, buf)?;
+                buf.push('"');
+                for (k, v) in &self.attrs {
+                    buf.push(' ');
+                    buf.push_str(k);
+                    buf.push_str(r#"=""#);
+                    buf.push_str(v);
+                    buf.push('"');
+                }
+                buf.push_str("></script>");
             }
             AssetKind::Style => {
-                format!(
-                    r#"<link rel="stylesheet" href="{}{}"{}>"#,
-                    self.path, hash_suffix, attrs_str
-                )
+                buf.push_str(r#"<link rel="stylesheet" href=""#);
+                buf.push_str(&self.path);
+                write_cache_param(&self.path, buf)?;
+                buf.push('"');
+                for (k, v) in &self.attrs {
+                    buf.push(' ');
+                    buf.push_str(k);
+                    buf.push_str(r#"=""#);
+                    buf.push_str(v);
+                    buf.push('"');
+                }
+                buf.push('>');
             }
-        })
+        }
+        Ok(())
     }
+
 }
 
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
@@ -113,14 +125,16 @@ fn separate_path_attr(
 }
 
 #[cfg(feature = "cache-bust")]
-fn get_cache_param(path: &str) -> Result<String, String> {
+fn write_cache_param(path: &str, buf: &mut String) -> Result<(), String> {
     let hash = hash_file(path).map_err(|e| format!("Failed to hash asset file '{path}': {e}"))?;
-    Ok(format!("?{hash}"))
+    buf.push('?');
+    buf.push_str(&hash);
+    Ok(())
 }
 
 #[cfg(not(feature = "cache-bust"))]
-fn get_cache_param(_path: &str) -> Result<String, String> {
-    Ok(String::new())
+fn write_cache_param(_path: &str, _buf: &mut String) -> Result<(), String> {
+    Ok(())
 }
 
 #[cfg(feature = "cache-bust")]
@@ -241,7 +255,7 @@ mod tests {
     }
 
     #[cfg(feature = "cache-bust")]
-    mod to_html_rendering {
+    mod write_html_rendering {
         use super::*;
 
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
@@ -254,9 +268,10 @@ mod tests {
                 path: "test_files/asset.js".to_string(),
                 attrs: vec![],
             };
-            let html = asset.to_html().unwrap();
+            let mut buf = String::new();
+            asset.write_html(&mut buf).unwrap();
             assert_eq!(
-                html,
+                buf,
                 format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#)
             );
         }
@@ -271,9 +286,10 @@ mod tests {
                     ("baz".to_string(), "qux".to_string()),
                 ],
             };
-            let html = asset.to_html().unwrap();
+            let mut buf = String::new();
+            asset.write_html(&mut buf).unwrap();
             assert_eq!(
-                html,
+                buf,
                 format!(
                     r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#
                 )
@@ -287,9 +303,10 @@ mod tests {
                 path: "test_files/asset.css".to_string(),
                 attrs: vec![],
             };
-            let html = asset.to_html().unwrap();
+            let mut buf = String::new();
+            asset.write_html(&mut buf).unwrap();
             assert_eq!(
-                html,
+                buf,
                 format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#)
             );
         }
@@ -304,9 +321,10 @@ mod tests {
                     ("baz".to_string(), "qux".to_string()),
                 ],
             };
-            let html = asset.to_html().unwrap();
+            let mut buf = String::new();
+            asset.write_html(&mut buf).unwrap();
             assert_eq!(
-                html,
+                buf,
                 format!(
                     r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}" foo="bar" baz="qux">"#
                 )
@@ -320,7 +338,8 @@ mod tests {
                 path: "nonexistent.js".to_string(),
                 attrs: vec![],
             };
-            let err = asset.to_html().unwrap_err();
+            let mut buf = String::new();
+            let err = asset.write_html(&mut buf).unwrap_err();
             assert!(err.contains("Failed to hash asset file"));
         }
     }
