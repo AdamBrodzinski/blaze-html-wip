@@ -7,15 +7,79 @@ use std::{
 
 use crate::{ast::TemplateNode, parse};
 
-/// HTML template engine
+/// Builder for configuring a [`BlazeTemplate`] instance.
 ///
 /// # Example
 /// ```ignore
-/// let blaze = BlazeTemplate::new()
-///     .set_root_directory("templates")
-///     .enable_dev(true);
+/// let blaze = BlazeTemplate::builder()
+///     .root_dir("templates")
+///     .dev(true)
+///     .build();
+/// ```
+#[derive(Debug, Clone)]
+pub struct BlazeTemplateBuilder {
+    dev: bool,
+    root_dir: String,
+}
+
+impl Default for BlazeTemplateBuilder {
+    fn default() -> Self {
+        Self {
+            dev: false,
+            root_dir: "src".to_string(),
+        }
+    }
+}
+
+impl BlazeTemplateBuilder {
+    /// Create a new builder with default settings.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the root directory for templates, relative to the project path.
+    /// Default is `"src"`.
+    pub fn root_dir(mut self, path: &str) -> Self {
+        self.root_dir = path.to_string();
+        self
+    }
+
+    /// Enable dev mode, which disables template caching between requests.
+    /// Default is `false`.
+    pub fn dev(mut self, enabled: bool) -> Self {
+        self.dev = enabled;
+        self
+    }
+
+    /// Build the `BlazeTemplate` instance.
+    ///
+    /// # Panics
+    /// Panics if the current working directory cannot be determined.
+    pub fn build(self) -> BlazeTemplate {
+        let cwd = std::env::current_dir().expect("could not determine current directory");
+        let project_path = cwd.to_string_lossy().into_owned();
+
+        BlazeTemplate {
+            inner: Arc::new(BlazeTemplateInner {
+                dev: self.dev,
+                project_path,
+                root_dir: self.root_dir,
+                ast_nodes: RwLock::new(HashMap::new()),
+            }),
+        }
+    }
+}
+
+/// HTML template engine with caching support.
 ///
-/// blaze.render_page("pages/about.html", json_data);
+/// # Example
+/// ```ignore
+/// let blaze = BlazeTemplate::builder()
+///     .root_dir("templates")
+///     .dev(true)
+///     .build();
+///
+/// blaze.render_page("pages/about.html", &json!({}));
 /// ```
 #[derive(Clone)]
 pub struct BlazeTemplate {
@@ -29,7 +93,6 @@ struct BlazeTemplateInner {
     ast_nodes: RwLock<HashMap<String, Vec<TemplateNode>>>,
 }
 
-// hide ast nodes when printing debug
 impl std::fmt::Debug for BlazeTemplate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BlazeTemplate")
@@ -42,44 +105,21 @@ impl std::fmt::Debug for BlazeTemplate {
 
 impl Default for BlazeTemplate {
     fn default() -> Self {
-        let cwd = std::env::current_dir().expect("Expected the current directory to be found");
-        let project_path = cwd.to_string_lossy().into_owned();
-        Self {
-            inner: Arc::new(BlazeTemplateInner {
-                dev: false,
-                project_path,
-                root_dir: "src".to_string(),
-                ast_nodes: RwLock::new(HashMap::new()),
-            }),
-        }
+        BlazeTemplateBuilder::new().build()
     }
 }
 
 impl BlazeTemplate {
+    /// Create a new `BlazeTemplate` with default settings.
+    ///
+    /// For custom configuration, use [`BlazeTemplate::builder()`] instead.
     pub fn new() -> Self {
         Self::default()
     }
 
-    /// Set the root directory for templates, relative to the project path.
-    ///
-    /// # Panics
-    /// Panics if called after the `BlazeTemplate` has been cloned/shared.
-    pub fn set_root_directory(mut self, path: &str) -> Self {
-        Arc::get_mut(&mut self.inner)
-            .expect("cannot configure after sharing")
-            .root_dir = path.to_string();
-        self
-    }
-
-    /// Dev mode will disable template caching between requests.
-    ///
-    /// # Panics
-    /// Panics if called after the `BlazeTemplate` has been cloned/shared.
-    pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
-        Arc::get_mut(&mut self.inner)
-            .expect("cannot configure after sharing")
-            .dev = dev_enabled;
-        self
+    /// Create a builder for configuring a `BlazeTemplate`.
+    pub fn builder() -> BlazeTemplateBuilder {
+        BlazeTemplateBuilder::new()
     }
 
     /// Returns whether dev mode is enabled.
@@ -141,9 +181,10 @@ mod tests {
 
     #[test]
     fn test_builder_pattern() {
-        let blaze = BlazeTemplate::new()
-            .set_root_directory("customer/pages")
-            .enable_dev(true);
+        let blaze = BlazeTemplate::builder()
+            .root_dir("customer/pages")
+            .dev(true)
+            .build();
 
         assert_eq!(blaze.root_dir(), "customer/pages");
         assert_eq!(blaze.is_dev(), true);
@@ -151,7 +192,7 @@ mod tests {
 
     #[test]
     fn clone_shares_cache() {
-        let blaze1 = BlazeTemplate::new().set_root_directory("test_files");
+        let blaze1 = BlazeTemplate::builder().root_dir("test_files").build();
         let blaze2 = blaze1.clone();
 
         // Both point to the same inner Arc
@@ -177,7 +218,7 @@ mod tests {
 
         #[test]
         fn fetches_template_and_passes_to_build() {
-            let blaze = BlazeTemplate::new().set_root_directory("test_files");
+            let blaze = BlazeTemplate::builder().root_dir("test_files").build();
             let data = json!(());
             let result = blaze
                 .render_page("pages/test_engine_read.html", &data)
@@ -194,7 +235,7 @@ mod tests {
 
     #[test]
     fn compile_page_caches_ast() {
-        let blaze = BlazeTemplate::new().set_root_directory("test_files");
+        let blaze = BlazeTemplate::builder().root_dir("test_files").build();
         blaze
             .compile_page_template("pages/test_engine_read.html")
             .unwrap();
