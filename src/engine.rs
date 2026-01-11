@@ -30,8 +30,8 @@ impl BlazeTemplateBuilder {
 
     /// Set the root directory for templates.
     ///
-    /// Relative paths are resolved against the current working directory at build time.
-    /// Default is the current working directory.
+    /// Paths are stored as-is and resolved relative to cwd at runtime.
+    /// Default is `"."` (current working directory).
     pub fn template_root_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.template_root_dir = Some(path.into());
         self
@@ -45,17 +45,8 @@ impl BlazeTemplateBuilder {
     }
 
     /// Build the `BlazeTemplate` instance.
-    ///
-    /// # Panics
-    /// Panics if the current working directory cannot be determined.
     pub fn build(self) -> BlazeTemplate {
-        let cwd = std::env::current_dir().expect("could not determine current directory");
-
-        let template_root_dir = match self.template_root_dir {
-            Some(path) if path.is_absolute() => path,
-            Some(path) => cwd.join(path),
-            None => cwd,
-        };
+        let template_root_dir = self.template_root_dir.unwrap_or_else(|| PathBuf::from("."));
 
         BlazeTemplate {
             inner: Arc::new(BlazeTemplateInner {
@@ -165,8 +156,7 @@ mod tests {
     #[test]
     fn test_new_with_defaults() {
         let blaze = BlazeTemplate::new();
-        let cwd = std::env::current_dir().unwrap();
-        assert_eq!(blaze.template_root_dir(), cwd);
+        assert_eq!(blaze.template_root_dir(), std::path::Path::new("."));
         assert_eq!(blaze.is_dev(), false);
     }
 
@@ -177,8 +167,7 @@ mod tests {
             .dev(true)
             .build();
 
-        assert!(blaze.template_root_dir().ends_with("customer/pages"));
-        assert!(blaze.template_root_dir().is_absolute());
+        assert_eq!(blaze.template_root_dir(), std::path::Path::new("customer/pages"));
         assert_eq!(blaze.is_dev(), true);
     }
 
