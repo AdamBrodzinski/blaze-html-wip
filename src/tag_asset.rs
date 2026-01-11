@@ -14,60 +14,39 @@
 use nom::Parser;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
-use nom::combinator::{cut, map_res};
 use nom::error::context;
 use nom::multi::many0;
-use nom::sequence::{pair, preceded};
+use nom::sequence::preceded;
 
 use crate::VResult;
 use crate::ast::TemplateNode;
+use crate::error::make_error;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
-    context(
-        "Script tag",
-        (
-            tag("<Script"),
-            cut(map_res(
-                (
-                    many0(preceded(multispace1, parse_attr)),
-                    pair(multispace0, context("closing tag", tag("/>"))),
-                ),
-                |(attrs, _)| {
-                    let (src_path, other_attrs) = separate_path_attr(attrs, "<Script")?;
-                    let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
-                    Ok::<_, String>(TemplateNode::Asset(text))
-                },
-            )),
-        )
-            .map(|(_, node)| node),
-    )
-    .parse(input)
+    let (input, _) = tag("<Script").parse(input)?;
+    let (input, attrs) = many0(preceded(multispace1, parse_attr)).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = context("closing tag", tag("/>")).parse(input)?;
+
+    let (src_path, other_attrs) =
+        separate_path_attr(attrs, "<Script").map_err(|e| make_error(input, e))?;
+    let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
+
+    Ok((input, TemplateNode::Asset(text)))
 }
 
 pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
-    context(
-        "Style tag",
-        (
-            tag("<Style"),
-            cut(map_res(
-                (
-                    many0(preceded(multispace1, parse_attr)),
-                    pair(multispace0, context("closing tag", tag("/>"))),
-                ),
-                |(attrs, _)| {
-                    let (src_path, other_attrs) = separate_path_attr(attrs, "<Style")?;
-                    let text = format!(
-                        r#"<link rel="stylesheet" href="{}"{}>"#,
-                        src_path, other_attrs
-                    );
-                    Ok::<_, String>(TemplateNode::Asset(text))
-                },
-            )),
-        )
-            .map(|(_, node)| node),
-    )
-    .parse(input)
+    let (input, _) = tag("<Style").parse(input)?;
+    let (input, attrs) = many0(preceded(multispace1, parse_attr)).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = context("closing tag", tag("/>")).parse(input)?;
+
+    let (src_path, other_attrs) =
+        separate_path_attr(attrs, "<Style").map_err(|e| make_error(input, e))?;
+    let text = format!(r#"<link rel="stylesheet" href="{}"{}>"#, src_path, other_attrs);
+
+    Ok((input, TemplateNode::Asset(text)))
 }
 
 fn separate_path_attr(

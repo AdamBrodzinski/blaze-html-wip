@@ -71,6 +71,11 @@ impl<I: fmt::Display> fmt::Display for BlazeError<I> {
 
 impl<I: fmt::Debug + fmt::Display> std::error::Error for BlazeError<I> {}
 
+/// Create a nom Failure error from a string message
+pub fn make_error(input: &str, msg: String) -> nom::Err<BlazeError<&str>> {
+    nom::Err::Failure(BlazeError::from_external_error(input, ErrorKind::Fail, msg))
+}
+
 /// Debug function to see all errors in the chain
 #[allow(dead_code)]
 pub fn debug_error(e: &BlazeError<&str>) {
