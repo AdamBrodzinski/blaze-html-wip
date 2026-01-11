@@ -29,17 +29,7 @@ struct BlazeTemplateInner {
     ast_nodes: RwLock<HashMap<String, Vec<TemplateNode>>>,
 }
 
-impl Clone for BlazeTemplateInner {
-    fn clone(&self) -> Self {
-        Self {
-            dev: self.dev,
-            project_path: self.project_path.clone(),
-            root_dir: self.root_dir.clone(),
-            ast_nodes: RwLock::new(HashMap::new()),
-        }
-    }
-}
-
+// hide ast nodes when printing debug
 impl std::fmt::Debug for BlazeTemplate {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("BlazeTemplate")
@@ -71,14 +61,24 @@ impl BlazeTemplate {
     }
 
     /// Set the root directory for templates, relative to the project path.
+    ///
+    /// # Panics
+    /// Panics if called after the `BlazeTemplate` has been cloned/shared.
     pub fn set_root_directory(mut self, path: &str) -> Self {
-        Arc::make_mut(&mut self.inner).root_dir = path.to_string();
+        Arc::get_mut(&mut self.inner)
+            .expect("cannot configure after sharing")
+            .root_dir = path.to_string();
         self
     }
 
     /// Dev mode will disable template caching between requests.
+    ///
+    /// # Panics
+    /// Panics if called after the `BlazeTemplate` has been cloned/shared.
     pub fn enable_dev(mut self, dev_enabled: bool) -> Self {
-        Arc::make_mut(&mut self.inner).dev = dev_enabled;
+        Arc::get_mut(&mut self.inner)
+            .expect("cannot configure after sharing")
+            .dev = dev_enabled;
         self
     }
 
