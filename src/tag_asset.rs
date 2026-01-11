@@ -19,9 +19,36 @@ use nom::multi::many0;
 use nom::sequence::preceded;
 
 use crate::VResult;
-use crate::ast::TemplateNode;
+use crate::ast::{AssetKind, AssetNode, TemplateNode};
 use crate::error::make_error;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
+
+impl AssetNode {
+    /// Renders the asset node to HTML, optionally appending a cache-busting query param
+    pub fn to_html(&self) -> Result<String, String> {
+        let hash_suffix = get_cache_param(&self.path)?;
+        let attrs_str: String = self
+            .attrs
+            .iter()
+            .map(|(k, v)| format!(r#" {k}="{v}""#))
+            .collect();
+
+        Ok(match self.kind {
+            AssetKind::Script => {
+                format!(
+                    r#"<script src="{}{}"{}></script>"#,
+                    self.path, hash_suffix, attrs_str
+                )
+            }
+            AssetKind::Style => {
+                format!(
+                    r#"<link rel="stylesheet" href="{}{}"{}>"#,
+                    self.path, hash_suffix, attrs_str
+                )
+            }
+        })
+    }
+}
 
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<Script").parse(input)?;
@@ -29,11 +56,17 @@ pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = context("closing tag", tag("/>")).parse(input)?;
 
-    let (src_path, other_attrs) =
+    let (path, other_attrs) =
         separate_path_attr(attrs, "<Script").map_err(|e| make_error(input, e))?;
-    let text = format!(r#"<script src="{}"{}></script>"#, src_path, other_attrs);
 
-    Ok((input, TemplateNode::Asset(text)))
+    Ok((
+        input,
+        TemplateNode::Asset(AssetNode {
+            kind: AssetKind::Script,
+            path,
+            attrs: other_attrs,
+        }),
+    ))
 }
 
 pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
@@ -42,53 +75,52 @@ pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = context("closing tag", tag("/>")).parse(input)?;
 
-    let (src_path, other_attrs) =
+    let (path, other_attrs) =
         separate_path_attr(attrs, "<Style").map_err(|e| make_error(input, e))?;
-    let text = format!(r#"<link rel="stylesheet" href="{}"{}>"#, src_path, other_attrs);
 
-    Ok((input, TemplateNode::Asset(text)))
+    Ok((
+        input,
+        TemplateNode::Asset(AssetNode {
+            kind: AssetKind::Style,
+            path,
+            attrs: other_attrs,
+        }),
+    ))
 }
 
 fn separate_path_attr(
     attrs: Vec<(&str, &str)>,
     tag_name: &'static str,
-) -> Result<(String, String), String> {
+) -> Result<(String, Vec<(String, String)>), String> {
     let mut src_path: Option<&str> = None;
-    let mut passthrough_attrs = String::with_capacity(10 * attrs.len());
+    let mut passthrough_attrs: Vec<(String, String)> = Vec::new();
 
     for (key, value) in attrs {
         if key == "path" {
             src_path = Some(value);
             continue;
         }
-        passthrough_attrs.push(' ');
-        passthrough_attrs.push_str(key);
-        passthrough_attrs.push('=');
-        passthrough_attrs.push('"');
-        passthrough_attrs.push_str(value);
-        passthrough_attrs.push('"');
+        passthrough_attrs.push((key.to_string(), value.to_string()));
     }
 
     let src_path = match src_path {
-        Some(path) => path,
+        Some(path) => path.to_string(),
         // custom error trait will convert Err(String) to a nom context error
         None => return Err(format!("path is a required attribute of {tag_name} />")),
     };
 
-    let cache_param = get_cache_param(src_path);
-    Ok((format!("{src_path}{cache_param}"), passthrough_attrs))
+    Ok((src_path, passthrough_attrs))
 }
 
 #[cfg(feature = "cache-bust")]
-fn get_cache_param(path: &str) -> String {
-    let hash =
-        hash_file(path).unwrap_or_else(|e| panic!("Failed to hash asset file '{path}': {e}"));
-    format!("?{hash}")
+fn get_cache_param(path: &str) -> Result<String, String> {
+    let hash = hash_file(path).map_err(|e| format!("Failed to hash asset file '{path}': {e}"))?;
+    Ok(format!("?{hash}"))
 }
 
 #[cfg(not(feature = "cache-bust"))]
-fn get_cache_param(_path: &str) -> String {
-    String::new()
+fn get_cache_param(_path: &str) -> Result<String, String> {
+    Ok(String::new())
 }
 
 #[cfg(feature = "cache-bust")]
@@ -104,104 +136,192 @@ mod tests {
     use super::*;
     use indoc::indoc;
 
-    #[cfg(feature = "cache-bust")]
-    mod query_param {
+    mod script_parser {
         use super::*;
 
         #[test]
-        fn adds_cache_busting_query_param() {
+        fn parses_minimal() {
             let template = r#"<Script path="test_files/asset.js"    />"#;
             let (_remaining, node) = parse_script(template).unwrap();
-            let expected_text =
-                r#"<script src="test_files/asset.js?a6f2ed7be4c8834436f238d65249b651"></script>"#;
-            assert_eq!(node, TemplateNode::Asset(expected_text.into()));
-        }
-    }
-
-    #[cfg(feature = "cache-bust")]
-    mod script {
-        use super::*;
-
-        const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
-
-        #[test]
-        fn minimal() {
-            let template = r#"<Script path="test_files/asset.js"    />"#;
-            let (_remaining, node) = parse_script(template).unwrap();
-            let expected_text = format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#);
-            assert_eq!(node, TemplateNode::Asset(expected_text));
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![],
+                })
+            );
         }
 
         #[test]
-        fn single_quotes() {
+        fn parses_single_quotes() {
             let template = r#"<Script     path='test_files/asset.js'/> other text"#;
             let (remaining, node) = parse_script(template).unwrap();
-            let expected_text = format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#);
-            assert_eq!(node, TemplateNode::Asset(expected_text));
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![],
+                })
+            );
             assert_eq!(remaining, " other text");
         }
 
         #[test]
-        fn multi_line_spaces() {
+        fn parses_multi_line_spaces() {
             let template = indoc! {r#"
                 <Script
                   path='test_files/asset.js'
                 /> other text
             "#};
             let (remaining, node) = parse_script(template).unwrap();
-            let expected_text = format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#);
-            assert_eq!(node, TemplateNode::Asset(expected_text));
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![],
+                })
+            );
             assert_eq!(remaining, " other text\n");
         }
 
         #[test]
-        fn with_attrs() {
+        fn parses_with_attrs() {
             let template = r#"<Script path="test_files/asset.js" foo="bar" baz="qux" />"#;
             let (_remaining, node) = parse_script(template).unwrap();
-            let expected_text = format!(
-                r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![
+                        ("foo".to_string(), "bar".to_string()),
+                        ("baz".to_string(), "qux".to_string()),
+                    ],
+                })
             );
-            assert_eq!(node, TemplateNode::Asset(expected_text));
+        }
+    }
+
+    mod style_parser {
+        use super::*;
+
+        #[test]
+        fn parses_minimal() {
+            let template = r#"<Style path="test_files/asset.css"    />"#;
+            let (_remaining, node) = parse_style(template).unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Style,
+                    path: "test_files/asset.css".to_string(),
+                    attrs: vec![],
+                })
+            );
         }
 
         #[test]
-        #[should_panic(expected = "Failed to hash asset file")]
-        fn panics_on_missing_file() {
-            let template = r#"<Script path="nonexistent.js" />"#;
-            let _ = parse_script(template);
+        fn parses_with_attrs() {
+            let template = r#"<Style path="test_files/asset.css" foo="bar" baz="qux"/>"#;
+            let (_remaining, node) = parse_style(template).unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Style,
+                    path: "test_files/asset.css".to_string(),
+                    attrs: vec![
+                        ("foo".to_string(), "bar".to_string()),
+                        ("baz".to_string(), "qux".to_string()),
+                    ],
+                })
+            );
         }
     }
 
     #[cfg(feature = "cache-bust")]
-    mod style {
+    mod to_html_rendering {
         use super::*;
 
+        const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
         const CSS_HASH: &str = "a0ff2dc6b477abd5ca51c463f720d3ab";
 
         #[test]
-        fn minimal() {
-            let template = r#"<Style path="test_files/asset.css"    />"#;
-            let (_remaining, node) = parse_style(template).unwrap();
-            let expected_text =
-                format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#);
-            assert_eq!(node, TemplateNode::Asset(expected_text));
-        }
-
-        #[test]
-        fn with_attrs() {
-            let template = r#"<Style path="test_files/asset.css" foo="bar" baz="qux"/>"#;
-            let (_remaining, node) = parse_style(template).unwrap();
-            let expected_text = format!(
-                r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}" foo="bar" baz="qux">"#
+        fn script_renders_with_hash() {
+            let asset = AssetNode {
+                kind: AssetKind::Script,
+                path: "test_files/asset.js".to_string(),
+                attrs: vec![],
+            };
+            let html = asset.to_html().unwrap();
+            assert_eq!(
+                html,
+                format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#)
             );
-            assert_eq!(node, TemplateNode::Asset(expected_text));
         }
 
         #[test]
-        #[should_panic(expected = "Failed to hash asset file")]
-        fn panics_on_missing_file() {
-            let template = r#"<Style path="nonexistent.css" />"#;
-            let _ = parse_style(template);
+        fn script_renders_with_attrs() {
+            let asset = AssetNode {
+                kind: AssetKind::Script,
+                path: "test_files/asset.js".to_string(),
+                attrs: vec![
+                    ("foo".to_string(), "bar".to_string()),
+                    ("baz".to_string(), "qux".to_string()),
+                ],
+            };
+            let html = asset.to_html().unwrap();
+            assert_eq!(
+                html,
+                format!(
+                    r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#
+                )
+            );
+        }
+
+        #[test]
+        fn style_renders_with_hash() {
+            let asset = AssetNode {
+                kind: AssetKind::Style,
+                path: "test_files/asset.css".to_string(),
+                attrs: vec![],
+            };
+            let html = asset.to_html().unwrap();
+            assert_eq!(
+                html,
+                format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#)
+            );
+        }
+
+        #[test]
+        fn style_renders_with_attrs() {
+            let asset = AssetNode {
+                kind: AssetKind::Style,
+                path: "test_files/asset.css".to_string(),
+                attrs: vec![
+                    ("foo".to_string(), "bar".to_string()),
+                    ("baz".to_string(), "qux".to_string()),
+                ],
+            };
+            let html = asset.to_html().unwrap();
+            assert_eq!(
+                html,
+                format!(
+                    r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}" foo="bar" baz="qux">"#
+                )
+            );
+        }
+
+        #[test]
+        fn returns_error_on_missing_file() {
+            let asset = AssetNode {
+                kind: AssetKind::Script,
+                path: "nonexistent.js".to_string(),
+                attrs: vec![],
+            };
+            let err = asset.to_html().unwrap_err();
+            assert!(err.contains("Failed to hash asset file"));
         }
     }
 }

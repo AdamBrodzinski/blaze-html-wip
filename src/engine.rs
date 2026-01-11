@@ -76,8 +76,6 @@ impl BlazeTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use indoc::formatdoc;
-    use serde_json::json;
 
     #[test]
     fn test_new_with_defaults() {
@@ -96,23 +94,30 @@ mod tests {
         assert_eq!(blaze.dev, true);
     }
 
-    const JS_HASH: &str = "44f4b32954b6da985de1cfd924eacdda";
-    const CSS_HASH: &str = "5c7ead8de806c5ed42f44b22c63183ee";
+    #[cfg(feature = "cache-bust")]
+    mod render_with_hash {
+        use super::*;
+        use indoc::formatdoc;
+        use serde_json::json;
 
-    #[test]
-    fn fetches_template_and_passes_to_build() {
-        let blaze = BlazeTemplate::new().set_root_directory("test_files");
-        let data = json!(());
-        let result = blaze
-            .render_page("pages/test_engine_read.html", &data)
-            .unwrap();
+        const JS_HASH: &str = "44f4b32954b6da985de1cfd924eacdda";
+        const CSS_HASH: &str = "5c7ead8de806c5ed42f44b22c63183ee";
 
-        let expected = formatdoc! {r#"
-            <script src="test_files/pages/test_engine_read.js?{JS_HASH}"></script>
-            <link rel="stylesheet" href="test_files/pages/test_engine_read.css?{CSS_HASH}">
-            <div>Hello World</div>
-        "#};
-        assert_eq!(result, expected);
+        #[test]
+        fn fetches_template_and_passes_to_build() {
+            let blaze = BlazeTemplate::new().set_root_directory("test_files");
+            let data = json!(());
+            let result = blaze
+                .render_page("pages/test_engine_read.html", &data)
+                .unwrap();
+
+            let expected = formatdoc! {r#"
+                <script src="test_files/pages/test_engine_read.js?{JS_HASH}"></script>
+                <link rel="stylesheet" href="test_files/pages/test_engine_read.css?{CSS_HASH}">
+                <div>Hello World</div>
+            "#};
+            assert_eq!(result, expected);
+        }
     }
 
     #[test]

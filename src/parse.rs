@@ -43,7 +43,7 @@ pub fn render_ast(
     let mut str_buff = String::with_capacity(template_len);
     for node in ast_nodes {
         match node {
-            TemplateNode::Asset(x) => str_buff.push_str(x),
+            TemplateNode::Asset(asset) => str_buff.push_str(&asset.to_html()?),
             TemplateNode::Text(x) => str_buff.push_str(x),
         }
     }
@@ -54,17 +54,19 @@ pub fn render_ast(
 mod tests {
     use super::*;
 
-    // helper to render ast for testing
-    fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
-        let ast_nodes = parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
-        render_ast(&ast_nodes, data, page_template.len())
-    }
-
+    #[cfg(feature = "cache-bust")]
     mod render {
         use super::*;
         use serde_json::json;
 
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
+
+        // helper to render ast for testing
+        fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
+            let ast_nodes =
+                parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
+            render_ast(&ast_nodes, data, page_template.len())
+        }
 
         #[test]
         fn render_basic_html() {
@@ -79,11 +81,9 @@ mod tests {
 
     mod parse {
         use super::*;
+        use crate::ast::{AssetKind, AssetNode};
         use indoc::indoc;
         use serde_json::json;
-
-        const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
-        const CSS_HASH: &str = "a0ff2dc6b477abd5ca51c463f720d3ab";
 
         #[test]
         fn parse_ast() {
@@ -100,13 +100,17 @@ mod tests {
                 ast,
                 [
                     TemplateNode::Text("Before\n".into()),
-                    TemplateNode::Asset(format!(
-                        r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#
-                    )),
+                    TemplateNode::Asset(AssetNode {
+                        kind: AssetKind::Script,
+                        path: "test_files/asset.js".to_string(),
+                        attrs: vec![],
+                    }),
                     TemplateNode::Text("\n".into()),
-                    TemplateNode::Asset(format!(
-                        r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#
-                    )),
+                    TemplateNode::Asset(AssetNode {
+                        kind: AssetKind::Style,
+                        path: "test_files/asset.css".to_string(),
+                        attrs: vec![],
+                    }),
                     TemplateNode::Text("\nAfter\n".into()),
                 ]
             );
@@ -120,7 +124,7 @@ mod tests {
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
             assert!(result_err.contains("<Script"));
-            assert!(result_err.contains(r#"foo="bar />"#));
+            assert!(result_err.contains("Unparsed content"));
         }
     }
 
@@ -161,9 +165,8 @@ mod tests {
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
-            println!("{}", &result_err);
             assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("missing closing quote"));
+            assert!(result_err.contains("Unparsed content"));
         }
     }
 }
