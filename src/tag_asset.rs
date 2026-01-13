@@ -18,9 +18,8 @@ use nom::error::context;
 use nom::multi::many0;
 use nom::sequence::preceded;
 
-use crate::VResult;
 use crate::ast::{AssetKind, AssetNode, TemplateNode};
-use crate::parser_error::make_error;
+use crate::parser_error::{make_error, VResult};
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
 impl AssetNode {

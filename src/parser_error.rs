@@ -6,6 +6,9 @@
 use nom::error::{ContextError, ErrorKind, FromExternalError, ParseError};
 use std::fmt;
 
+/// Parser result type with custom error handling that preserves map_res error messages
+pub type VResult<'a, T> = nom::IResult<&'a str, T, BlazeParseError<&'a str>>;
+
 /// Error kind variants for template parsing errors
 #[derive(Debug, Clone, PartialEq)]
 pub enum BlazeParseErrorKind {
