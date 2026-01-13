@@ -17,9 +17,6 @@ pub enum BlazeError {
 
     /// File I/O operation failed.
     Io(IoErrorDetails),
-
-    /// Template rendering failed.
-    Render(RenderErrorDetails),
 }
 
 /// Detailed information about a template parsing error.
@@ -57,27 +54,6 @@ pub enum IoOperation {
     HashAsset,
 }
 
-/// Detailed information about a rendering error.
-#[derive(Debug, Clone)]
-pub struct RenderErrorDetails {
-    /// The category of rendering failure.
-    pub kind: RenderErrorKind,
-    /// Human-readable error message.
-    pub message: String,
-}
-
-/// The category of rendering error.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum RenderErrorKind {
-    /// Referenced asset file was not found.
-    AssetNotFound {
-        /// Path to the missing asset.
-        path: String,
-    },
-    /// Other rendering error.
-    Other,
-}
-
 // === Display Implementations ===
 
 impl fmt::Display for BlazeError {
@@ -111,9 +87,6 @@ impl fmt::Display for BlazeError {
                     details.source
                 )
             }
-            BlazeError::Render(details) => {
-                write!(f, "Render error: {}", details.message)
-            }
         }
     }
 }
@@ -145,12 +118,6 @@ impl fmt::Display for IoErrorDetails {
     }
 }
 
-impl fmt::Display for RenderErrorDetails {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{}", self.message)
-    }
-}
-
 impl fmt::Display for IoOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -171,12 +138,6 @@ impl From<ParseErrorDetails> for BlazeError {
 impl From<IoErrorDetails> for BlazeError {
     fn from(details: IoErrorDetails) -> Self {
         BlazeError::Io(details)
-    }
-}
-
-impl From<RenderErrorDetails> for BlazeError {
-    fn from(details: RenderErrorDetails) -> Self {
-        BlazeError::Render(details)
     }
 }
 
@@ -312,97 +273,6 @@ impl BlazeError {
             source,
         })
     }
-
-    /// Create a render error for a missing asset.
-    pub fn asset_not_found(path: impl Into<String>, message: impl Into<String>) -> Self {
-        BlazeError::Render(RenderErrorDetails {
-            kind: RenderErrorKind::AssetNotFound { path: path.into() },
-            message: message.into(),
-        })
-    }
-
-    /// Create a generic render error.
-    pub fn render(message: impl Into<String>) -> Self {
-        BlazeError::Render(RenderErrorDetails {
-            kind: RenderErrorKind::Other,
-            message: message.into(),
-        })
-    }
-}
-
-// === Web Framework Helpers ===
-
-impl BlazeError {
-    /// Suggested HTTP status code for this error.
-    ///
-    /// Returns appropriate codes for web framework integration:
-    /// - `500` for server-side issues (parse errors, template I/O)
-    /// - `404` for missing assets referenced in templates
-    pub fn suggested_status_code(&self) -> u16 {
-        match self {
-            BlazeError::Parse(_) => 500,
-            BlazeError::Io(details) => match details.operation {
-                IoOperation::ReadTemplate => 500,
-                IoOperation::HashAsset => 404,
-            },
-            BlazeError::Render(details) => match &details.kind {
-                RenderErrorKind::AssetNotFound { .. } => 404,
-                RenderErrorKind::Other => 500,
-            },
-        }
-    }
-
-    /// Whether this error indicates a severe issue requiring attention.
-    pub fn is_severe(&self) -> bool {
-        matches!(self, BlazeError::Io(_))
-    }
-
-    /// Whether this error indicates a configuration or deployment issue.
-    pub fn is_configuration_error(&self) -> bool {
-        match self {
-            BlazeError::Parse(_) => true,
-            BlazeError::Io(details) => details.operation == IoOperation::ReadTemplate,
-            _ => false,
-        }
-    }
-
-    /// Get a brief, single-line description suitable for logging.
-    pub fn brief(&self) -> String {
-        match self {
-            BlazeError::Parse(d) => {
-                format!(
-                    "parse error at {}:{}: {}",
-                    d.line,
-                    d.column,
-                    d.message.chars().take(50).collect::<String>()
-                )
-            }
-            BlazeError::Io(d) => {
-                format!("{} failed: {}", d.operation, d.path.display())
-            }
-            BlazeError::Render(d) => {
-                format!(
-                    "render error: {}",
-                    d.message.chars().take(50).collect::<String>()
-                )
-            }
-        }
-    }
-
-    /// Whether this is a parse error.
-    pub fn is_parse_error(&self) -> bool {
-        matches!(self, BlazeError::Parse(_))
-    }
-
-    /// Whether this is an I/O error.
-    pub fn is_io_error(&self) -> bool {
-        matches!(self, BlazeError::Io(_))
-    }
-
-    /// Whether this is a render error.
-    pub fn is_render_error(&self) -> bool {
-        matches!(self, BlazeError::Render(_))
-    }
 }
 
 #[cfg(test)]
@@ -434,26 +304,6 @@ mod tests {
         let display = format!("{}", err);
         assert!(display.contains("reading template"));
         assert!(display.contains("missing.html"));
-    }
-
-    #[test]
-    fn suggested_status_codes() {
-        let parse_err = BlazeError::Parse(ParseErrorDetails {
-            message: "test".to_string(),
-            line: 1,
-            column: 1,
-            line_content: String::new(),
-            context: vec![],
-        });
-        assert_eq!(parse_err.suggested_status_code(), 500);
-
-        let asset_err = BlazeError::Render(RenderErrorDetails {
-            kind: RenderErrorKind::AssetNotFound {
-                path: "foo.js".to_string(),
-            },
-            message: "not found".to_string(),
-        });
-        assert_eq!(asset_err.suggested_status_code(), 404);
     }
 
     #[test]
