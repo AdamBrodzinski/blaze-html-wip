@@ -1,65 +1,44 @@
-//! Error types for the blaze-html template engine.
-
 use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
 use crate::parser_error::{BlazeParseError, BlazeParseErrorKind};
 
-/// Result type for blaze-html operations.
 pub type Result<T> = std::result::Result<T, BlazeError>;
 
-/// The main error type for blaze-html template operations.
 #[derive(Debug)]
 pub enum BlazeError {
-    /// Template parsing failed due to syntax error or invalid construct.
     Parse(ParseErrorDetails),
-
-    /// File I/O operation failed.
     Io(IoErrorDetails),
 }
 
-/// Detailed information about a template parsing error.
 #[derive(Debug, Clone)]
 pub struct ParseErrorDetails {
-    /// Human-readable error message.
     pub message: String,
-    /// Line number where the error occurred (1-indexed).
     pub line: usize,
-    /// Column number where the error occurred (1-indexed).
     pub column: usize,
-    /// The content of the line containing the error.
     pub line_content: String,
-    /// Parser context chain (outermost first).
     pub context: Vec<&'static str>,
 }
 
-/// Detailed information about an I/O error.
 #[derive(Debug)]
 pub struct IoErrorDetails {
-    /// The operation that failed.
     pub operation: IoOperation,
-    /// The file path involved.
     pub path: PathBuf,
-    /// The underlying I/O error.
     pub source: io::Error,
 }
 
-/// The type of I/O operation that failed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IoOperation {
-    /// Reading a template file from disk.
     ReadTemplate,
-    /// Reading an asset file for cache-busting hash computation.
     HashAsset,
 }
-
-// === Display Implementations ===
 
 impl fmt::Display for BlazeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             BlazeError::Parse(details) => {
+                // print the line that has an error, with ^ on approx location
                 write!(
                     f,
                     "Parse error at line {}:{}: {}",
@@ -127,8 +106,6 @@ impl fmt::Display for IoOperation {
     }
 }
 
-// === From Implementations ===
-
 impl From<ParseErrorDetails> for BlazeError {
     fn from(details: ParseErrorDetails) -> Self {
         BlazeError::Parse(details)
@@ -141,10 +118,7 @@ impl From<IoErrorDetails> for BlazeError {
     }
 }
 
-// === Conversion from Internal Parser Error ===
-
 impl ParseErrorDetails {
-    /// Create parse error details from the internal nom-compatible error.
     pub fn from_blaze_parse_error(input: &str, err: BlazeParseError<&str>) -> Self {
         // Find primary error: External > Char > Context > Nom
         let primary = err
@@ -197,7 +171,7 @@ impl ParseErrorDetails {
             None => ("Unknown parse error".to_string(), 1, 1, String::new()),
         };
 
-        // Collect context chain (outermost first)
+        // collect context chain (outermost first)
         let context: Vec<&'static str> = err
             .errors
             .iter()
@@ -217,7 +191,6 @@ impl ParseErrorDetails {
         }
     }
 
-    /// Create parse error details at a specific position in the input.
     pub fn at_position(input: &str, position: usize, message: impl Into<String>) -> Self {
         let offset = position.min(input.len());
         let line = input[..offset].chars().filter(|&c| c == '\n').count() + 1;
@@ -240,7 +213,6 @@ impl ParseErrorDetails {
 }
 
 impl BlazeError {
-    /// Create a `BlazeError` from a nom error wrapper.
     pub fn from_nom_error(input: &str, err: nom::Err<BlazeParseError<&str>>) -> Self {
         match err {
             nom::Err::Incomplete(_) => BlazeError::Parse(ParseErrorDetails {
@@ -256,7 +228,6 @@ impl BlazeError {
         }
     }
 
-    /// Create an I/O error for template reading.
     pub fn template_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::ReadTemplate,
@@ -265,7 +236,6 @@ impl BlazeError {
         })
     }
 
-    /// Create an I/O error for asset hashing.
     pub fn asset_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::HashAsset,
