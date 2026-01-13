@@ -19,9 +19,11 @@ pub fn parse_template_to_ast(
     .map_err(|e| format_blaze_error(page_template, e))?;
 
     if !remaining.is_empty() {
+        let preview: String = remaining.chars().take(50).collect();
+
         return Err(format!(
             "Failed to parse template. Unparsed content starting at: {:?}",
-            &remaining[..remaining.len().min(50)]
+            preview
         ));
     }
 
