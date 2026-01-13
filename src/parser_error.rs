@@ -79,101 +79,6 @@ pub fn make_error(input: &str, msg: String) -> nom::Err<BlazeParseError<&str>> {
     nom::Err::Failure(BlazeParseError::from_external_error(input, ErrorKind::Fail, msg))
 }
 
-/// Debug function to see all errors in the chain
-#[allow(dead_code)]
-pub fn debug_error(e: &BlazeParseError<&str>) {
-    eprintln!("=== Error chain ({} errors) ===", e.errors.len());
-    for (i, (pos, kind)) in e.errors.iter().enumerate() {
-        let preview: String = pos.chars().take(30).collect();
-        eprintln!("{i}: {kind:?} at \"{preview}...\"");
-    }
-    eprintln!("=== End error chain ===\n");
-}
-
-/// Convert a BlazeParseError into a human-readable error message with line/column info
-///
-/// Shows the most useful error (External or Char) prominently, with context chain below.
-/// Filters out internal nom errors (like Tag, MapRes) that aren't helpful to users.
-pub fn convert_error(input: &str, e: BlazeParseError<&str>) -> String {
-    // Find the primary error - prefer External, then Char, then first Context
-    let primary = e
-        .errors
-        .iter()
-        .find(|(_, k)| matches!(k, BlazeParseErrorKind::External(_)))
-        .or_else(|| {
-            e.errors
-                .iter()
-                .find(|(_, k)| matches!(k, BlazeParseErrorKind::Char(_)))
-        })
-        .or_else(|| {
-            e.errors
-                .iter()
-                .find(|(_, k)| matches!(k, BlazeParseErrorKind::Context(_)))
-        });
-
-    let Some((substring, kind)) = primary else {
-        return "Unknown parse error".to_string();
-    };
-
-    let mut result = String::new();
-    let offset = input.len() - substring.len();
-
-    // Handle empty input case
-    if input.is_empty() {
-        let msg = match kind {
-            BlazeParseErrorKind::External(msg) => format!("Error: {msg}"),
-            BlazeParseErrorKind::Char(c) => format!("Error: expected '{c}', got end of input"),
-            BlazeParseErrorKind::Context(ctx) => format!("Error in {ctx}: unexpected end of input"),
-            BlazeParseErrorKind::Nom(ek) => format!("Error: {ek:?}"),
-        };
-        return msg;
-    }
-
-    // Calculate position info
-    let line_num = input[..offset].chars().filter(|&c| c == '\n').count() + 1;
-    let line_start = input[..offset].rfind('\n').map(|p| p + 1).unwrap_or(0);
-    let line_end = substring.find('\n').unwrap_or(substring.len());
-    let line = &input[line_start..offset + line_end];
-    let column = offset - line_start;
-
-    // Format the primary error message
-    let error_msg = match kind {
-        BlazeParseErrorKind::External(msg) => msg.clone(),
-        BlazeParseErrorKind::Char(c) => {
-            if substring.is_empty() {
-                format!("expected '{c}', got end of input")
-            } else {
-                format!(
-                    "expected '{c}', found '{}'",
-                    substring.chars().next().unwrap()
-                )
-            }
-        }
-        BlazeParseErrorKind::Context(ctx) => ctx.to_string(),
-        BlazeParseErrorKind::Nom(ek) => format!("{ek:?}"),
-    };
-
-    result.push_str(&format!("Error at line {line_num}: {error_msg}\n\n"));
-    result.push_str(&format!("  {line}\n"));
-    result.push_str(&format!("  {}^\n", " ".repeat(column)));
-
-    // Collect context chain (skip Nom errors, they're internal details)
-    let contexts: Vec<&str> = e
-        .errors
-        .iter()
-        .rev() // outermost first
-        .filter_map(|(_, k)| match k {
-            BlazeParseErrorKind::Context(ctx) => Some(*ctx),
-            _ => None,
-        })
-        .collect();
-
-    if !contexts.is_empty() {
-        result.push_str(&format!("\nContext: {}\n", contexts.join(" → ")));
-    }
-
-    result
-}
 
 #[cfg(test)]
 mod tests {
@@ -190,20 +95,5 @@ mod tests {
             error.errors[0],
             (input, BlazeParseErrorKind::External("custom error".to_string()))
         );
-    }
-
-    #[test]
-    fn convert_error_shows_external_message() {
-        let input = "<Script foo=\"bar\" />";
-        let error = BlazeParseError {
-            errors: vec![(
-                &input[8..], // position after "<Script "
-                BlazeParseErrorKind::External("path is a required attribute".to_string()),
-            )],
-        };
-
-        let output = convert_error(input, error);
-        assert!(output.contains("path is a required attribute"));
-        assert!(output.contains("line 1"));
     }
 }

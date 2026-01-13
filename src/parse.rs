@@ -4,44 +4,39 @@ use nom::multi::many0;
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
-use crate::parser_error::{BlazeParseError, convert_error};
+use crate::error::{BlazeError, ParseErrorDetails};
 
 pub fn parse_template_to_ast(
     page_template: &str,
     _data: &Value,
-) -> Result<Vec<TemplateNode>, String> {
+) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
         crate::text::parse_text,
     )))
     .parse(page_template)
-    .map_err(|e| format_blaze_error(page_template, e))?;
+    .map_err(|e| BlazeError::from_nom_error(page_template, e))?;
 
     if !remaining.is_empty() {
         let preview: String = remaining.chars().take(50).collect();
+        let position = page_template.len() - remaining.len();
 
-        return Err(format!(
-            "Failed to parse template. Unparsed content starting at: {:?}",
-            preview
-        ));
+        return Err(BlazeError::Parse(ParseErrorDetails::at_position(
+            page_template,
+            position,
+            format!("Failed to parse template. Unparsed content starting at: {:?}", preview),
+        )));
     }
 
     Ok(nodes)
-}
-
-fn format_blaze_error(input: &str, err: nom::Err<BlazeParseError<&str>>) -> String {
-    match err {
-        nom::Err::Incomplete(_) => "Incomplete input".to_string(),
-        nom::Err::Error(e) | nom::Err::Failure(e) => convert_error(input, e),
-    }
 }
 
 pub fn render_ast(
     ast_nodes: &Vec<TemplateNode>,
     _data: &Value,
     template_len: usize,
-) -> Result<String, String> {
+) -> crate::error::Result<String> {
     let mut str_buff = String::with_capacity(template_len);
     for node in ast_nodes {
         match node {
@@ -64,9 +59,8 @@ mod tests {
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
 
         // helper to render ast for testing
-        fn render_template(page_template: &str, data: &Value) -> Result<String, String> {
-            let ast_nodes =
-                parse_template_to_ast(page_template, data).map_err(|e| e.to_string())?;
+        fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
+            let ast_nodes = parse_template_to_ast(page_template, data)?;
             render_ast(&ast_nodes, data, page_template.len())
         }
 
@@ -125,8 +119,9 @@ mod tests {
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
-            assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("Unparsed content"));
+            let err_str = result_err.to_string();
+            assert!(err_str.contains("<Script"));
+            assert!(err_str.contains("Unparsed content"));
         }
     }
 
@@ -142,9 +137,10 @@ mod tests {
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
-            println!("{}", &result_err);
-            assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("missing closing quote"));
+            let err_str = result_err.to_string();
+            println!("{}", &err_str);
+            assert!(err_str.contains("<Script"));
+            assert!(err_str.contains("missing closing quote"));
         }
 
         #[test]
@@ -155,9 +151,10 @@ mod tests {
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
-            println!("{}", &result_err);
-            assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("path is a required attribute"));
+            let err_str = result_err.to_string();
+            println!("{}", &err_str);
+            assert!(err_str.contains("<Script"));
+            assert!(err_str.contains("path is a required attribute"));
         }
 
         #[test]
@@ -167,8 +164,9 @@ mod tests {
             "#};
             let data = json!(());
             let result_err = parse_template_to_ast(template, &data).unwrap_err();
-            assert!(result_err.contains("<Script"));
-            assert!(result_err.contains("Unparsed content"));
+            let err_str = result_err.to_string();
+            assert!(err_str.contains("<Script"));
+            assert!(err_str.contains("Unparsed content"));
         }
     }
 }

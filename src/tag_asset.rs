@@ -25,7 +25,7 @@ use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 impl AssetNode {
     /// Writes the asset node HTML directly into the provided buffer.
     /// This avoids allocations compared to returning a new String.
-    pub fn write_html(&self, buf: &mut String) -> Result<(), String> {
+    pub fn write_html(&self, buf: &mut String) -> crate::error::Result<()> {
         match self.kind {
             AssetKind::Script => {
                 buf.push_str(r#"<script src=""#);
@@ -124,15 +124,16 @@ fn separate_path_attr(
 }
 
 #[cfg(feature = "cache-bust")]
-fn write_cache_param(path: &str, buf: &mut String) -> Result<(), String> {
-    let hash = hash_file(path).map_err(|e| format!("Failed to hash asset file '{path}': {e}"))?;
+fn write_cache_param(path: &str, buf: &mut String) -> crate::error::Result<()> {
+    use crate::error::BlazeError;
+    let hash = hash_file(path).map_err(|e| BlazeError::asset_io(path, e))?;
     buf.push('?');
     buf.push_str(&hash);
     Ok(())
 }
 
 #[cfg(not(feature = "cache-bust"))]
-fn write_cache_param(_path: &str, _buf: &mut String) -> Result<(), String> {
+fn write_cache_param(_path: &str, _buf: &mut String) -> crate::error::Result<()> {
     Ok(())
 }
 
@@ -332,6 +333,8 @@ mod tests {
 
         #[test]
         fn returns_error_on_missing_file() {
+            use crate::error::BlazeError;
+
             let asset = AssetNode {
                 kind: AssetKind::Script,
                 path: "nonexistent.js".to_string(),
@@ -339,7 +342,8 @@ mod tests {
             };
             let mut buf = String::new();
             let err = asset.write_html(&mut buf).unwrap_err();
-            assert!(err.contains("Failed to hash asset file"));
+            assert!(matches!(err, BlazeError::Io(_)));
+            assert!(err.to_string().contains("nonexistent.js"));
         }
     }
 }

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{ast::TemplateNode, parse};
+use crate::{ast::TemplateNode, error::BlazeError, parse};
 
 /// Builder for configuring a [`BlazeTemplate`] instance.
 ///
@@ -141,17 +141,17 @@ impl BlazeTemplate {
     /// Pre-compile a template and cache its AST for faster rendering.
     ///
     /// This is useful for warming up the cache at application startup.
-    pub fn compile_page_template(&self, rel_page_path: &str) -> Result<(), String> {
+    pub fn compile_page_template(&self, rel_page_path: &str) -> crate::error::Result<()> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, &json!(()))?;
         if !self.inner.dev && self.inner.cache_ast {
-            self.set_cached_ast(rel_page_path, ast_nodes, page_template.len())?;
+            self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
         }
         Ok(())
     }
 
     /// Render a template file to an HTML string.
-    pub fn render_page(&self, rel_page_path: &str, data: &Value) -> Result<String, String> {
+    pub fn render_page(&self, rel_page_path: &str, data: &Value) -> crate::error::Result<String> {
         let should_cache = !self.inner.dev && self.inner.cache_ast;
 
         // Try to use cached AST
@@ -160,7 +160,7 @@ impl BlazeTemplate {
                 .inner
                 .ast_nodes
                 .read()
-                .map_err(|e| format!("AST cache read lock poisoned: {e}"))?;
+                .expect("AST cache read lock poisoned");
             if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
                 return parse::render_ast(cached_ast, data, *template_len);
             }
@@ -174,29 +174,24 @@ impl BlazeTemplate {
         let result = parse::render_ast(&ast_nodes, data, template_len);
 
         if should_cache {
-            self.set_cached_ast(rel_page_path, ast_nodes, template_len)?;
+            self.set_cached_ast(rel_page_path, ast_nodes, template_len);
         }
 
         result
     }
 
-    fn read_template(&self, rel_page_path: &str) -> Result<String, String> {
+    fn read_template(&self, rel_page_path: &str) -> crate::error::Result<String> {
         let template_path = self.inner.template_root_dir.join(rel_page_path);
-        std::fs::read_to_string(&template_path).map_err(|e| e.to_string())
+        std::fs::read_to_string(&template_path)
+            .map_err(|e| BlazeError::template_io(&template_path, e))
     }
 
-    fn set_cached_ast(
-        &self,
-        rel_page_path: &str,
-        ast: Vec<TemplateNode>,
-        len: usize,
-    ) -> Result<(), String> {
+    fn set_cached_ast(&self, rel_page_path: &str, ast: Vec<TemplateNode>, len: usize) {
         self.inner
             .ast_nodes
             .write()
-            .map_err(|e| format!("AST cache write lock poisoned: {e}"))?
+            .expect("AST cache write lock poisoned")
             .insert(rel_page_path.to_string(), (ast, len));
-        Ok(())
     }
 }
 
