@@ -154,16 +154,12 @@ impl BlazeTemplate {
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> crate::error::Result<String> {
         let should_cache = !self.inner.dev && self.inner.cache_ast;
 
-        // Try to use cached AST
-        if should_cache {
-            let cache = self
-                .inner
-                .ast_nodes
-                .read()
-                .expect("AST cache read lock poisoned");
-            if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
-                return parse::render_ast(cached_ast, data, *template_len);
-            }
+        // Try to use cached AST (if lock is poisoned, skip cache and re-parse below)
+        if should_cache
+            && let Ok(cache) = self.inner.ast_nodes.read()
+            && let Some((cached_ast, template_len)) = cache.get(rel_page_path)
+        {
+            return parse::render_ast(cached_ast, data, *template_len);
         }
 
         // Cache miss or caching disabled: parse and optionally cache
@@ -187,11 +183,16 @@ impl BlazeTemplate {
     }
 
     fn set_cached_ast(&self, rel_page_path: &str, ast: Vec<TemplateNode>, len: usize) {
-        self.inner
-            .ast_nodes
-            .write()
-            .expect("AST cache write lock poisoned")
-            .insert(rel_page_path.to_string(), (ast, len));
+        // If lock is poisoned, clear the potentially inconsistent cache and continue
+        let mut cache = match self.inner.ast_nodes.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                guard.clear();
+                guard
+            }
+        };
+        cache.insert(rel_page_path.to_string(), (ast, len));
     }
 }
 
