@@ -147,7 +147,7 @@ impl ParseErrorDetails {
                     .get(line_start..offset + line_end_offset)
                     .unwrap_or("")
                     .to_string();
-                let column = offset.saturating_sub(line_start) + 1;
+                let column = input[line_start..offset].chars().count() + 1;
 
                 let message = match kind {
                     BlazeParseErrorKind::External(msg) => msg.clone(),
@@ -200,7 +200,7 @@ impl ParseErrorDetails {
             .map(|p| offset + p)
             .unwrap_or(input.len());
         let line_content = input.get(line_start..line_end).unwrap_or("").to_string();
-        let column = offset.saturating_sub(line_start) + 1;
+        let column = input[line_start..offset].chars().count() + 1;
 
         ParseErrorDetails {
             message: message.into(),
@@ -297,5 +297,16 @@ mod tests {
         assert_eq!(details.line, 2);
         assert_eq!(details.column, 2);
         assert_eq!(details.line_content, "line2");
+    }
+
+    #[test]
+    fn at_position_handles_utf8_correctly() {
+        // "héllo" has 5 chars but 6 bytes (é is 2 bytes)
+        let input = "héllo @name";
+        // Byte position 8 is the '@' (h=1 + é=2 + llo=3 + space=1 + @=1)
+        let details = ParseErrorDetails::at_position(input, 7, "test error");
+        // Column should be 7 (character position), not 8 (byte position)
+        assert_eq!(details.column, 7);
+        assert_eq!(details.line, 1);
     }
 }
