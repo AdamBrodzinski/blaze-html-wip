@@ -124,6 +124,7 @@ impl ParseErrorDetails {
         let primary = err
             .errors
             .iter()
+            // primary error
             .find(|(_, k)| matches!(k, BlazeParseErrorKind::External(_)))
             .or_else(|| {
                 err.errors

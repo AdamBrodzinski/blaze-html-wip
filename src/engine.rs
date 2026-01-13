@@ -154,7 +154,6 @@ impl BlazeTemplate {
     pub fn render_page(&self, rel_page_path: &str, data: &Value) -> crate::error::Result<String> {
         let should_cache = !self.inner.dev && self.inner.cache_ast;
 
-        // Try to use cached AST
         if should_cache {
             match self.inner.ast_nodes.read() {
                 Ok(cache) => {
@@ -163,13 +162,15 @@ impl BlazeTemplate {
                     }
                 }
                 Err(_) => {
-                    // Lock poisoned - clear the potentially inconsistent cache
+                    // Lock poisoned, clear the potentially inconsistent cache
+                    if self.is_dev() {
+                        println!("Lock poisoned, clearing cache");
+                    }
                     self.clear_cache();
                 }
             }
         }
 
-        // Cache miss or caching disabled: parse and optionally cache
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
         let template_len = page_template.len();
