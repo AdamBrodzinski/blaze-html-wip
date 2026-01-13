@@ -4,7 +4,7 @@ use nom::multi::many0;
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
-use crate::error::{BlazeError, convert_error};
+use crate::parser_error::{BlazeParseError, convert_error};
 
 pub fn parse_template_to_ast(
     page_template: &str,
@@ -30,7 +30,7 @@ pub fn parse_template_to_ast(
     Ok(nodes)
 }
 
-fn format_blaze_error(input: &str, err: nom::Err<BlazeError<&str>>) -> String {
+fn format_blaze_error(input: &str, err: nom::Err<BlazeParseError<&str>>) -> String {
     match err {
         nom::Err::Incomplete(_) => "Incomplete input".to_string(),
         nom::Err::Error(e) | nom::Err::Failure(e) => convert_error(input, e),

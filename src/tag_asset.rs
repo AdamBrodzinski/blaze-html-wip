@@ -20,7 +20,7 @@ use nom::sequence::preceded;
 
 use crate::VResult;
 use crate::ast::{AssetKind, AssetNode, TemplateNode};
-use crate::error::make_error;
+use crate::parser_error::make_error;
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
 impl AssetNode {

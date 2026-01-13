@@ -1,12 +1,12 @@
 pub use crate::engine::BlazeTemplate;
-pub use crate::error::{BlazeError, BlazeErrorKind};
+pub use crate::parser_error::{BlazeParseError, BlazeParseErrorKind};
 
 /// Parser result type with custom error handling that preserves map_res error messages
-pub type VResult<'a, T> = nom::IResult<&'a str, T, BlazeError<&'a str>>;
+pub type VResult<'a, T> = nom::IResult<&'a str, T, BlazeParseError<&'a str>>;
 
 mod ast;
 mod engine;
-mod error;
+mod parser_error;
 mod parse;
 mod shared_parsers;
 mod tag_asset;
