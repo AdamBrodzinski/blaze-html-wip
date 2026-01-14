@@ -13,6 +13,8 @@ pub fn parse_template_to_ast(
     let (remaining, nodes) = many0(alt((
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
+        crate::variables::parse_escape,
+        crate::variables::parse_variable,
         crate::text::parse_text,
     )))
     .parse(page_template)
@@ -25,7 +27,10 @@ pub fn parse_template_to_ast(
         return Err(BlazeError::Parse(ParseErrorDetails::at_position(
             page_template,
             position,
-            format!("Failed to parse template. Unparsed content starting at: {:?}", preview),
+            format!(
+                "Failed to parse template. Unparsed content starting at: {:?}",
+                preview
+            ),
         )));
     }
 
@@ -41,7 +46,9 @@ pub fn render_ast(
     for node in ast_nodes {
         match node {
             TemplateNode::Asset(asset) => asset.write_html(&mut str_buff)?,
+            TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
+            TemplateNode::Variable(x) => str_buff.push_str(x),
         }
     }
     Ok(str_buff)
@@ -50,11 +57,12 @@ pub fn render_ast(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use indoc::indoc;
+    use serde_json::json;
 
     #[cfg(feature = "cache-bust")]
     mod render {
         use super::*;
-        use serde_json::json;
 
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
 
@@ -78,8 +86,7 @@ mod tests {
     mod parse {
         use super::*;
         use crate::ast::{AssetKind, AssetNode};
-        use indoc::indoc;
-        use serde_json::json;
+        use pretty_assertions::assert_eq;
 
         #[test]
         fn parse_ast() {
@@ -87,11 +94,12 @@ mod tests {
                 Before
                 <Script path="test_files/asset.js" />
                 <Style path="test_files/asset.css" />
+                foo@@bar.com
+                @foo
                 After
             "#};
             let data = json!(());
             let ast = parse_template_to_ast(template, &data).unwrap();
-            assert_eq!(ast.len(), 5);
             assert_eq!(
                 ast,
                 [
@@ -107,6 +115,10 @@ mod tests {
                         path: "test_files/asset.css".to_string(),
                         attrs: vec![],
                     }),
+                    TemplateNode::Text("\nfoo".into()),
+                    TemplateNode::Escaped,
+                    TemplateNode::Text("bar.com\n".into()),
+                    TemplateNode::Variable("foo".into()),
                     TemplateNode::Text("\nAfter\n".into()),
                 ]
             );
