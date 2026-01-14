@@ -6,10 +6,7 @@ use serde_json::Value;
 use crate::ast::TemplateNode;
 use crate::error::{BlazeError, ParseErrorDetails};
 
-pub fn parse_template_to_ast(
-    page_template: &str,
-    _data: &Value,
-) -> crate::error::Result<Vec<TemplateNode>> {
+pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
@@ -68,7 +65,7 @@ mod tests {
 
         // helper to render ast for testing
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
-            let ast_nodes = parse_template_to_ast(page_template, data)?;
+            let ast_nodes = parse_template_to_ast(page_template)?;
             render_ast(&ast_nodes, data, page_template.len())
         }
 
@@ -98,8 +95,7 @@ mod tests {
                 @foo
                 After
             "#};
-            let data = json!(());
-            let ast = parse_template_to_ast(template, &data).unwrap();
+            let ast = parse_template_to_ast(template).unwrap();
             assert_eq!(
                 ast,
                 [
@@ -129,8 +125,7 @@ mod tests {
             let template = indoc! {r#"
                 Before <Script path="test_files/asset.js foo="bar /> After
             "#};
-            let data = json!(());
-            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            let result_err = parse_template_to_ast(template).unwrap_err();
             let err_str = result_err.to_string();
             assert!(err_str.contains("<Script"));
             assert!(err_str.contains("Unparsed content"));
@@ -140,15 +135,13 @@ mod tests {
     mod parse_asset_err {
         use super::*;
         use indoc::indoc;
-        use serde_json::json;
 
         #[test]
         fn missing_attr_quote() {
             let template = indoc! {r#"
                 Before <Script path="test_files/asset.js" foo="bar /> After
             "#};
-            let data = json!(());
-            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            let result_err = parse_template_to_ast(template).unwrap_err();
             let err_str = result_err.to_string();
             println!("{}", &err_str);
             assert!(err_str.contains("<Script"));
@@ -161,8 +154,7 @@ mod tests {
                Foo
                <Script foo="bar" />
             "#};
-            let data = json!(());
-            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            let result_err = parse_template_to_ast(template).unwrap_err();
             let err_str = result_err.to_string();
             println!("{}", &err_str);
             assert!(err_str.contains("<Script"));
@@ -174,8 +166,7 @@ mod tests {
             let template = indoc! {r#"
                 Before <Script path="test_files/asset.js" After
             "#};
-            let data = json!(());
-            let result_err = parse_template_to_ast(template, &data).unwrap_err();
+            let result_err = parse_template_to_ast(template).unwrap_err();
             let err_str = result_err.to_string();
             assert!(err_str.contains("<Script"));
             assert!(err_str.contains("Unparsed content"));

@@ -1,4 +1,4 @@
-use serde_json::{Value, json};
+use serde_json::Value;
 use std::{
     collections::HashMap,
     path::PathBuf,
@@ -143,7 +143,7 @@ impl BlazeTemplate {
     /// This is useful for warming up the cache at application startup.
     pub fn compile_page_template(&self, rel_page_path: &str) -> crate::error::Result<()> {
         let page_template = self.read_template(rel_page_path)?;
-        let ast_nodes = parse::parse_template_to_ast(&page_template, &json!(()))?;
+        let ast_nodes = parse::parse_template_to_ast(&page_template)?;
         if !self.inner.dev && self.inner.cache_ast {
             self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
         }
@@ -172,7 +172,7 @@ impl BlazeTemplate {
         }
 
         let page_template = self.read_template(rel_page_path)?;
-        let ast_nodes = parse::parse_template_to_ast(&page_template, data)?;
+        let ast_nodes = parse::parse_template_to_ast(&page_template)?;
         let template_len = page_template.len();
 
         let result = parse::render_ast(&ast_nodes, data, template_len);
@@ -217,6 +217,7 @@ impl BlazeTemplate {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn test_new_with_defaults() {
