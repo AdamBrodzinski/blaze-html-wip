@@ -19,6 +19,7 @@ criterion = "0.5"
 axum = "0.8"
 tokio = { version = "1", features = ["full"] }
 indoc = "2.0.7"
+pretty_assertions = "1.4.1"
 
 [[bench]]
 name = "template_bench"
