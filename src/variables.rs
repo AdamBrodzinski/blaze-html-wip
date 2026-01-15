@@ -1,5 +1,5 @@
 use nom::Parser;
-use nom::bytes::complete::tag;
+use nom::bytes::complete::{tag, take_while1};
 use nom::error::context;
 use nom::sequence::preceded;
 
@@ -12,7 +12,14 @@ pub fn parse_escape(input: &str) -> VResult<'_, TemplateNode> {
 }
 
 pub fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
-    let (input, var_key) = context("variable", preceded(tag("@"), tag("foo"))).parse(input)?;
+    let (input, var_key) = context(
+        "variable",
+        preceded(
+            tag("@"),
+            take_while1(|c: char| c.is_alphanumeric() || c == '.' || c == '_'),
+        ),
+    )
+    .parse(input)?;
     Ok((input, TemplateNode::Variable(var_key.into())))
 }
 
@@ -49,6 +56,30 @@ mod tests {
             let template = "@foo after";
             let (remaining, node) = parse_variable(template).unwrap();
             assert_eq!(node, TemplateNode::Variable("foo".into()));
+            assert_eq!(remaining, " after");
+        }
+
+        #[test]
+        fn parses_variable_with_number() {
+            let template = "@foo1 after";
+            let (remaining, node) = parse_variable(template).unwrap();
+            assert_eq!(node, TemplateNode::Variable("foo1".into()));
+            assert_eq!(remaining, " after");
+        }
+
+        #[test]
+        fn parses_variable_with_underscore() {
+            let template = "@first_name2 after";
+            let (remaining, node) = parse_variable(template).unwrap();
+            assert_eq!(node, TemplateNode::Variable("first_name2".into()));
+            assert_eq!(remaining, " after");
+        }
+
+        #[test]
+        fn parses_nested_variable() {
+            let template = "@person.first_name2 after";
+            let (remaining, node) = parse_variable(template).unwrap();
+            assert_eq!(node, TemplateNode::Variable("person.first_name2".into()));
             assert_eq!(remaining, " after");
         }
     }
