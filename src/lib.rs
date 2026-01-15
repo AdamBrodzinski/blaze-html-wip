@@ -8,5 +8,6 @@ mod parse;
 mod parser_error;
 mod shared_parsers;
 mod tag_asset;
+mod template_data;
 mod text;
 mod variables;
