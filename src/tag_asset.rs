@@ -32,12 +32,13 @@ impl AssetNode {
                 buf.push_str(&self.path);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for (k, v) in &self.attrs {
+                for (k, v, q) in &self.attrs {
                     buf.push(' ');
                     buf.push_str(k);
-                    buf.push_str(r#"=""#);
+                    buf.push('=');
+                    buf.push(*q);
                     buf.push_str(v);
-                    buf.push('"');
+                    buf.push(*q);
                 }
                 buf.push_str("></script>");
             }
@@ -46,12 +47,13 @@ impl AssetNode {
                 buf.push_str(&self.path);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for (k, v) in &self.attrs {
+                for (k, v, q) in &self.attrs {
                     buf.push(' ');
                     buf.push_str(k);
-                    buf.push_str(r#"=""#);
+                    buf.push('=');
+                    buf.push(*q);
                     buf.push_str(v);
-                    buf.push('"');
+                    buf.push(*q);
                 }
                 buf.push('>');
             }
@@ -100,18 +102,18 @@ pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
 }
 
 fn separate_path_attr(
-    attrs: Vec<(&str, &str)>,
+    attrs: Vec<(&str, &str, char)>,
     tag_name: &'static str,
-) -> Result<(String, Vec<(String, String)>), String> {
+) -> Result<(String, Vec<(String, String, char)>), String> {
     let mut src_path: Option<&str> = None;
-    let mut passthrough_attrs: Vec<(String, String)> = Vec::new();
+    let mut passthrough_attrs: Vec<(String, String, char)> = Vec::new();
 
-    for (key, value) in attrs {
+    for (key, value, quote) in attrs {
         if key == "path" {
             src_path = Some(value);
             continue;
         }
-        passthrough_attrs.push((key.to_string(), value.to_string()));
+        passthrough_attrs.push((key.to_string(), value.to_string(), quote));
     }
 
     let src_path = match src_path {
@@ -211,8 +213,25 @@ mod tests {
                     kind: AssetKind::Script,
                     path: "test_files/asset.js".to_string(),
                     attrs: vec![
-                        ("foo".to_string(), "bar".to_string()),
-                        ("baz".to_string(), "qux".to_string()),
+                        ("foo".to_string(), "bar".to_string(), '"'),
+                        ("baz".to_string(), "qux".to_string(), '"'),
+                    ],
+                })
+            );
+        }
+
+        #[test]
+        fn preserves_single_quotes() {
+            let template = r#"<Script path="test_files/asset.js" foo='bar' baz="qux" />"#;
+            let (_remaining, node) = parse_script(template).unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![
+                        ("foo".to_string(), "bar".to_string(), '\''),
+                        ("baz".to_string(), "qux".to_string(), '"'),
                     ],
                 })
             );
@@ -246,8 +265,8 @@ mod tests {
                     kind: AssetKind::Style,
                     path: "test_files/asset.css".to_string(),
                     attrs: vec![
-                        ("foo".to_string(), "bar".to_string()),
-                        ("baz".to_string(), "qux".to_string()),
+                        ("foo".to_string(), "bar".to_string(), '"'),
+                        ("baz".to_string(), "qux".to_string(), '"'),
                     ],
                 })
             );
@@ -282,8 +301,8 @@ mod tests {
                 kind: AssetKind::Script,
                 path: "test_files/asset.js".to_string(),
                 attrs: vec![
-                    ("foo".to_string(), "bar".to_string()),
-                    ("baz".to_string(), "qux".to_string()),
+                    ("foo".to_string(), "bar".to_string(), '"'),
+                    ("baz".to_string(), "qux".to_string(), '"'),
                 ],
             };
             let mut buf = String::new();
@@ -292,6 +311,26 @@ mod tests {
                 buf,
                 format!(
                     r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#
+                )
+            );
+        }
+
+        #[test]
+        fn script_preserves_single_quotes() {
+            let asset = AssetNode {
+                kind: AssetKind::Script,
+                path: "test_files/asset.js".to_string(),
+                attrs: vec![
+                    ("foo".to_string(), "bar".to_string(), '\''),
+                    ("baz".to_string(), "qux".to_string(), '"'),
+                ],
+            };
+            let mut buf = String::new();
+            asset.write_html(&mut buf).unwrap();
+            assert_eq!(
+                buf,
+                format!(
+                    r#"<script src="test_files/asset.js?{JS_HASH}" foo='bar' baz="qux"></script>"#
                 )
             );
         }
@@ -317,8 +356,8 @@ mod tests {
                 kind: AssetKind::Style,
                 path: "test_files/asset.css".to_string(),
                 attrs: vec![
-                    ("foo".to_string(), "bar".to_string()),
-                    ("baz".to_string(), "qux".to_string()),
+                    ("foo".to_string(), "bar".to_string(), '"'),
+                    ("baz".to_string(), "qux".to_string(), '"'),
                 ],
             };
             let mut buf = String::new();

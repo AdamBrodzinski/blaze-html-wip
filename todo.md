@@ -8,7 +8,7 @@
 - X escape variables
 - X handle poisened lock scenario
 - X handle quotes inside an attr, foo="alert('bar')"
-- preserve attr quotes, foo='bar' renders foo="bar"
+- X preserve attr quotes, foo='bar' renders foo="bar"
 - write html escape for attrs
 
 ## Future features

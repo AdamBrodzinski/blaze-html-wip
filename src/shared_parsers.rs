@@ -14,30 +14,35 @@ pub mod attrs {
 
     /// parse a pair of single or double quotes and extract inner
     /// Once we see an opening quote, we MUST have a closing quote
-    pub fn parse_quoted_value(input: &str) -> VResult<'_, &str> {
+    /// Returns (quote_char, inner_value)
+    pub fn parse_quoted_value(input: &str) -> VResult<'_, (char, &str)> {
         context(
             "quoted value",
             alt((
                 preceded(
                     char('\''),
                     cut(terminated(take_till1(|c| c == '\''), char('\''))),
-                ),
+                )
+                .map(|v| ('\'', v)),
                 preceded(
                     char('"'),
                     cut(context(
                         "missing closing quote",
                         terminated(take_till1(|c| c == '"'), char('"')),
                     )),
-                ),
+                )
+                .map(|v| ('"', v)),
             )),
         )
         .parse(input)
     }
 
-    pub fn parse_attr(input: &str) -> VResult<'_, (&str, &str)> {
+    /// Returns (attr_name, attr_value, quote_char)
+    pub fn parse_attr(input: &str) -> VResult<'_, (&str, &str, char)> {
         context(
             "attribute",
-            separated_pair(take_while1(is_attr_name_char), tag("="), parse_quoted_value),
+            separated_pair(take_while1(is_attr_name_char), tag("="), parse_quoted_value)
+                .map(|(name, (quote, value))| (name, value, quote)),
         )
         .parse(input)
     }
