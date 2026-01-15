@@ -150,6 +150,7 @@ mod tests {
                 <Script path='test_files/asset.js' />
                 Name: @person.first_name1
                 Email: foo@@bar.com
+                <div onclick="alert('inner-quote')"></div>
                 After
             "#};
             let data = json!({"person": {"first_name1": "Jane"}});
@@ -160,6 +161,7 @@ mod tests {
                   <script src="test_files/asset.js?{}"></script>
                   Name: Jane
                   Email: foo@bar.com
+                  <div onclick="alert('inner-quote')"></div>
                   After
                 "#},
                 JS_HASH
