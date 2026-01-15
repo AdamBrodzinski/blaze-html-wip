@@ -5,6 +5,7 @@ use serde_json::Value;
 
 use crate::ast::TemplateNode;
 use crate::error::{BlazeError, ParseErrorDetails};
+use crate::template_data::get_json_value;
 
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
@@ -36,7 +37,7 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
 
 pub fn render_ast(
     ast_nodes: &Vec<TemplateNode>,
-    _data: &Value,
+    data: &Value,
     template_len: usize,
 ) -> crate::error::Result<String> {
     let mut str_buff = String::with_capacity(template_len);
@@ -45,7 +46,10 @@ pub fn render_ast(
             TemplateNode::Asset(asset) => asset.write_html(&mut str_buff)?,
             TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
-            TemplateNode::Variable(x) => str_buff.push_str(x),
+            TemplateNode::Variable(key) => {
+                let result = get_json_value(data, key).unwrap();
+                str_buff.push_str(&format!("{result}"))
+            }
         }
     }
     Ok(str_buff)
@@ -60,6 +64,7 @@ mod tests {
     #[cfg(feature = "cache-bust")]
     mod render {
         use super::*;
+        use pretty_assertions::assert_eq;
 
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
 
@@ -71,11 +76,25 @@ mod tests {
 
         #[test]
         fn render_basic_html() {
-            let template = r#"Before <Script path='test_files/asset.js' /> After"#;
-            let data = json!(());
+            let template = indoc! {r#"
+                Before
+                <Script path='test_files/asset.js' />
+                Name: @person.first_name1
+                Email: foo@@bar.com
+                After
+            "#};
+            let data = json!({"person": {"first_name1": "Jane"}});
             let html = render_template(template, &data).unwrap();
-            let expected =
-                format!(r#"Before <script src="test_files/asset.js?{JS_HASH}"></script> After"#);
+            let expected = format!(
+                indoc! {r#"
+                  Before
+                  <script src="test_files/asset.js?{}"></script>
+                  Name: Jane
+                  Email: foo@bar.com
+                  After
+                "#},
+                JS_HASH
+            );
             assert_eq!(html, expected);
         }
     }
