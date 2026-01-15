@@ -47,8 +47,19 @@ pub fn render_ast(
             TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
             TemplateNode::Variable(key) => {
-                let result = get_json_value(data, key).unwrap();
-                str_buff.push_str(&format!("{result}"))
+                let json_value = get_json_value(data, key).unwrap();
+                match json_value {
+                    Value::String(x) => str_buff.push_str(x),
+                    Value::Bool(x) => str_buff.push_str(&x.to_string()),
+                    Value::Number(x) => str_buff.push_str(&x.to_string()),
+                    Value::Null => return Err(String::from("Not supported")),
+                    Value::Array(arr) => {
+                        return Err(format!("Cannot render array to string {arr:?}"));
+                    }
+                    Value::Object(obj) => {
+                        return Err(format!("Cannot render obj to string {obj:?}"));
+                    }
+                }
             }
         }
     }
