@@ -33,5 +33,27 @@ fn bench_asset_precompiled(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_plain_text, bench_asset_precompiled);
+fn bench_variables(c: &mut Criterion) {
+    let blaze = BlazeTemplate::builder()
+        .template_root_dir("test_files")
+        .build();
+
+    blaze
+        .compile_page_template("pages/bench_variables.html")
+        .unwrap();
+
+    let data = json!({
+        "first_name": "John",
+        "person": {
+            "last_name": "Doe",
+            "age": 42_i32
+        }
+    });
+
+    c.bench_function("variables", |b| {
+        b.iter(|| blaze.render_page(black_box("pages/bench_variables.html"), &data))
+    });
+}
+
+criterion_group!(benches, bench_plain_text, bench_asset_precompiled, bench_variables);
 criterion_main!(benches);
