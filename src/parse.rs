@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use nom::Parser;
 use nom::branch::alt;
 use nom::multi::many0;
@@ -8,20 +10,29 @@ use crate::error::BlazeError;
 use crate::error::ParseErrorDetails;
 use crate::template_data::get_json_value;
 
-/// Escapes HTML special characters to prevent XSS attacks.
-fn html_escape(s: &str) -> String {
-    let mut escaped = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            '<' => escaped.push_str("&lt;"),
-            '>' => escaped.push_str("&gt;"),
-            '&' => escaped.push_str("&amp;"),
-            '"' => escaped.push_str("&quot;"),
-            '\'' => escaped.push_str("&#39;"),
-            _ => escaped.push(c),
+// Escapes HTML special characters to prevent XSS attacks.
+// Returns borrowed string if no escaping needed, avoiding allocation.
+fn html_escape(s: &str) -> Cow<'_, str> {
+    let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
+    match first_special_idx {
+        None => Cow::Borrowed(s),
+        Some(byte_idx) => {
+            let mut escaped = String::with_capacity(s.len() + 16);
+            escaped.push_str(&s[..byte_idx]); // copy prefix that doesn't need escaping
+
+            for c in s[byte_idx..].chars() {
+                match c {
+                    '<' => escaped.push_str("&lt;"),
+                    '>' => escaped.push_str("&gt;"),
+                    '&' => escaped.push_str("&amp;"),
+                    '"' => escaped.push_str("&quot;"),
+                    '\'' => escaped.push_str("&#39;"),
+                    _ => escaped.push(c),
+                }
+            }
+            Cow::Owned(escaped)
         }
     }
-    escaped
 }
 
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
@@ -263,7 +274,10 @@ mod tests {
             let template = "Hello @name!";
             let data = json!({"name": "<script>alert('xss')</script>"});
             let html = render_template(template, &data).unwrap();
-            assert_eq!(html, "Hello &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;!");
+            assert_eq!(
+                html,
+                "Hello &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;!"
+            );
         }
 
         #[test]
