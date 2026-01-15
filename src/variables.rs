@@ -20,7 +20,8 @@ pub fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
         ),
     )
     .parse(input)?;
-    Ok((input, TemplateNode::Variable(var_key.into())))
+    let segments: Vec<String> = var_key.split('.').map(String::from).collect();
+    Ok((input, TemplateNode::Variable(segments)))
 }
 
 #[cfg(test)]
@@ -55,7 +56,7 @@ mod tests {
         fn parses_simple_variable() {
             let template = "@foo after";
             let (remaining, node) = parse_variable(template).unwrap();
-            assert_eq!(node, TemplateNode::Variable("foo".into()));
+            assert_eq!(node, TemplateNode::Variable(vec!["foo".into()]));
             assert_eq!(remaining, " after");
         }
 
@@ -63,7 +64,7 @@ mod tests {
         fn parses_variable_with_number() {
             let template = "@foo1 after";
             let (remaining, node) = parse_variable(template).unwrap();
-            assert_eq!(node, TemplateNode::Variable("foo1".into()));
+            assert_eq!(node, TemplateNode::Variable(vec!["foo1".into()]));
             assert_eq!(remaining, " after");
         }
 
@@ -71,7 +72,7 @@ mod tests {
         fn parses_variable_with_underscore() {
             let template = "@first_name2 after";
             let (remaining, node) = parse_variable(template).unwrap();
-            assert_eq!(node, TemplateNode::Variable("first_name2".into()));
+            assert_eq!(node, TemplateNode::Variable(vec!["first_name2".into()]));
             assert_eq!(remaining, " after");
         }
 
@@ -79,7 +80,7 @@ mod tests {
         fn parses_nested_variable() {
             let template = "@person.first_name2 after";
             let (remaining, node) = parse_variable(template).unwrap();
-            assert_eq!(node, TemplateNode::Variable("person.first_name2".into()));
+            assert_eq!(node, TemplateNode::Variable(vec!["person".into(), "first_name2".into()]));
             assert_eq!(remaining, " after");
         }
     }

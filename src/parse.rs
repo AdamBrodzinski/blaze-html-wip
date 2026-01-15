@@ -47,19 +47,25 @@ pub fn render_ast(
             TemplateNode::Asset(asset) => asset.write_html(&mut str_buff)?,
             TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
-            TemplateNode::Variable(key) => {
-                let json_value = get_json_value(data, key)
-                    .map_err(|msg| BlazeError::render(key, msg))?;
+            TemplateNode::Variable(segments) => {
+                let json_value = get_json_value(data, segments)
+                    .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
                 match json_value {
                     Value::String(x) => str_buff.push_str(x),
                     Value::Bool(x) => str_buff.push_str(&x.to_string()),
                     Value::Number(x) => str_buff.push_str(&x.to_string()),
                     Value::Null => str_buff.push_str("null"),
                     Value::Array(_) => {
-                        return Err(BlazeError::render(key, "cannot render array as string"));
+                        return Err(BlazeError::render(
+                            segments.join("."),
+                            "cannot render array as string",
+                        ));
                     }
                     Value::Object(_) => {
-                        return Err(BlazeError::render(key, "cannot render object as string"));
+                        return Err(BlazeError::render(
+                            segments.join("."),
+                            "cannot render object as string",
+                        ));
                     }
                 }
             }
@@ -146,7 +152,7 @@ mod tests {
                     TemplateNode::Text("\nfoo".into()),
                     TemplateNode::Escaped,
                     TemplateNode::Text("bar.com\n".into()),
-                    TemplateNode::Variable("foo".into()),
+                    TemplateNode::Variable(vec!["foo".into()]),
                     TemplateNode::Text("\nAfter\n".into()),
                 ]
             );

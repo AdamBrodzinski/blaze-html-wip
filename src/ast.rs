@@ -19,7 +19,7 @@ pub enum TemplateNode {
     Text(String),     // anything that is not a template construct
     Asset(AssetNode), // css/js/img script tag, appends cache busting query param
     Escaped,          // @@ character that renders to @
-    Variable(String), // @foo or @foo.bar
+    Variable(Vec<String>), // @foo → ["foo"], @foo.bar → ["foo", "bar"]
 }
 // todo: nodes to use later
 // Escaped,
