@@ -8,11 +8,28 @@ use crate::error::BlazeError;
 use crate::error::ParseErrorDetails;
 use crate::template_data::get_json_value;
 
+/// Escapes HTML special characters to prevent XSS attacks.
+fn html_escape(s: &str) -> String {
+    let mut escaped = String::with_capacity(s.len());
+    for c in s.chars() {
+        match c {
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '&' => escaped.push_str("&amp;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&#39;"),
+            _ => escaped.push(c),
+        }
+    }
+    escaped
+}
+
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
         crate::variables::parse_escape,
+        crate::variables::parse_variable_raw, // Must come before parse_variable (@! before @)
         crate::variables::parse_variable,
         crate::text::parse_text,
     )))
@@ -48,6 +65,28 @@ pub fn render_ast(
             TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
             TemplateNode::Variable(segments) => {
+                let json_value = get_json_value(data, segments)
+                    .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
+                match json_value {
+                    Value::String(x) => str_buff.push_str(&html_escape(x)),
+                    Value::Bool(x) => str_buff.push_str(&x.to_string()),
+                    Value::Number(x) => str_buff.push_str(&x.to_string()),
+                    Value::Null => str_buff.push_str("null"),
+                    Value::Array(_) => {
+                        return Err(BlazeError::render(
+                            segments.join("."),
+                            "cannot render array as string",
+                        ));
+                    }
+                    Value::Object(_) => {
+                        return Err(BlazeError::render(
+                            segments.join("."),
+                            "cannot render object as string",
+                        ));
+                    }
+                }
+            }
+            TemplateNode::VariableRaw(segments) => {
                 let json_value = get_json_value(data, segments)
                     .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
                 match json_value {
@@ -208,6 +247,63 @@ mod tests {
             let err_str = result_err.to_string();
             assert!(err_str.contains("<Script"));
             assert!(err_str.contains("Unparsed content"));
+        }
+    }
+
+    mod html_escaping {
+        use super::*;
+
+        fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
+            let ast_nodes = parse_template_to_ast(page_template)?;
+            render_ast(&ast_nodes, data, page_template.len())
+        }
+
+        #[test]
+        fn escapes_html_in_variables() {
+            let template = "Hello @name!";
+            let data = json!({"name": "<script>alert('xss')</script>"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Hello &lt;script&gt;alert(&#39;xss&#39;)&lt;/script&gt;!");
+        }
+
+        #[test]
+        fn escapes_all_special_chars() {
+            let template = "@content";
+            let data = json!({"content": "<>&\"'"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "&lt;&gt;&amp;&quot;&#39;");
+        }
+
+        #[test]
+        fn raw_variable_does_not_escape() {
+            let template = "Hello @!name!";
+            let data = json!({"name": "<b>bold</b>"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Hello <b>bold</b>!");
+        }
+
+        #[test]
+        fn mixed_escaped_and_raw() {
+            let template = "User: @user.name Bio: @!user.bio";
+            let data = json!({"user": {"name": "<script>", "bio": "<p>Hello</p>"}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "User: &lt;script&gt; Bio: <p>Hello</p>");
+        }
+
+        #[test]
+        fn numbers_not_escaped() {
+            let template = "Count: @count";
+            let data = json!({"count": 42});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Count: 42");
+        }
+
+        #[test]
+        fn bools_not_escaped() {
+            let template = "Active: @active";
+            let data = json!({"active": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Active: true");
         }
     }
 }
