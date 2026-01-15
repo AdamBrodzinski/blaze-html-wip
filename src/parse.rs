@@ -4,7 +4,8 @@ use nom::multi::many0;
 use serde_json::Value;
 
 use crate::ast::TemplateNode;
-use crate::error::{BlazeError, ParseErrorDetails};
+use crate::error::BlazeError;
+use crate::error::ParseErrorDetails;
 use crate::template_data::get_json_value;
 
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
@@ -47,17 +48,18 @@ pub fn render_ast(
             TemplateNode::Escaped => str_buff.push('@'),
             TemplateNode::Text(x) => str_buff.push_str(x),
             TemplateNode::Variable(key) => {
-                let json_value = get_json_value(data, key).unwrap();
+                let json_value = get_json_value(data, key)
+                    .map_err(|msg| BlazeError::render(key, msg))?;
                 match json_value {
                     Value::String(x) => str_buff.push_str(x),
                     Value::Bool(x) => str_buff.push_str(&x.to_string()),
                     Value::Number(x) => str_buff.push_str(&x.to_string()),
-                    Value::Null => return Err(String::from("Not supported")),
-                    Value::Array(arr) => {
-                        return Err(format!("Cannot render array to string {arr:?}"));
+                    Value::Null => str_buff.push_str("null"),
+                    Value::Array(_) => {
+                        return Err(BlazeError::render(key, "cannot render array as string"));
                     }
-                    Value::Object(obj) => {
-                        return Err(format!("Cannot render obj to string {obj:?}"));
+                    Value::Object(_) => {
+                        return Err(BlazeError::render(key, "cannot render object as string"));
                     }
                 }
             }

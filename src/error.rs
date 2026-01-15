@@ -10,6 +10,7 @@ pub type Result<T> = std::result::Result<T, BlazeError>;
 pub enum BlazeError {
     Parse(ParseErrorDetails),
     Io(IoErrorDetails),
+    Render(RenderErrorDetails),
 }
 
 #[derive(Debug, Clone)]
@@ -32,6 +33,12 @@ pub struct IoErrorDetails {
 pub enum IoOperation {
     ReadTemplate,
     HashAsset,
+}
+
+#[derive(Debug, Clone)]
+pub struct RenderErrorDetails {
+    pub variable: String,
+    pub message: String,
 }
 
 impl fmt::Display for BlazeError {
@@ -64,6 +71,13 @@ impl fmt::Display for BlazeError {
                     op,
                     details.path.display(),
                     details.source
+                )
+            }
+            BlazeError::Render(details) => {
+                write!(
+                    f,
+                    "Render error for '@{}': {}",
+                    details.variable, details.message
                 )
             }
         }
@@ -106,6 +120,12 @@ impl fmt::Display for IoOperation {
     }
 }
 
+impl fmt::Display for RenderErrorDetails {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "@{}: {}", self.variable, self.message)
+    }
+}
+
 impl From<ParseErrorDetails> for BlazeError {
     fn from(details: ParseErrorDetails) -> Self {
         BlazeError::Parse(details)
@@ -115,6 +135,12 @@ impl From<ParseErrorDetails> for BlazeError {
 impl From<IoErrorDetails> for BlazeError {
     fn from(details: IoErrorDetails) -> Self {
         BlazeError::Io(details)
+    }
+}
+
+impl From<RenderErrorDetails> for BlazeError {
+    fn from(details: RenderErrorDetails) -> Self {
+        BlazeError::Render(details)
     }
 }
 
@@ -242,6 +268,13 @@ impl BlazeError {
             operation: IoOperation::HashAsset,
             path: path.into(),
             source,
+        })
+    }
+
+    pub fn render(variable: impl Into<String>, message: impl Into<String>) -> Self {
+        BlazeError::Render(RenderErrorDetails {
+            variable: variable.into(),
+            message: message.into(),
         })
     }
 }
