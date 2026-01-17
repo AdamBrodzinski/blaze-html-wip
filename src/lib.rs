@@ -10,6 +10,5 @@ mod parser_error;
 mod render_context;
 mod shared_parsers;
 mod tag_asset;
-mod template_data;
 mod text;
 mod variables;
