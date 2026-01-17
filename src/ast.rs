@@ -8,11 +8,17 @@ pub enum AssetKind {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub struct Attr {
+    pub name: String,
+    pub value: String,
+    pub quote: char,
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct AssetNode {
     pub kind: AssetKind,
     pub path: String,
-    /// (name, value, quote_char)
-    pub attrs: Vec<(String, String, char)>,
+    pub attrs: Vec<Attr>,
 }
 
 #[derive(Debug, PartialEq, Clone)]

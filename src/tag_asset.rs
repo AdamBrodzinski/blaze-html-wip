@@ -18,7 +18,7 @@ use nom::error::context;
 use nom::multi::many0;
 use nom::sequence::preceded;
 
-use crate::ast::{AssetKind, AssetNode, TemplateNode};
+use crate::ast::{AssetKind, AssetNode, Attr, TemplateNode};
 use crate::parser_error::{make_error, VResult};
 use crate::shared_parsers::attrs::{parse_attr, parse_quoted_value};
 
@@ -32,13 +32,13 @@ impl AssetNode {
                 buf.push_str(&self.path);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for (k, v, q) in &self.attrs {
+                for attr in &self.attrs {
                     buf.push(' ');
-                    buf.push_str(k);
+                    buf.push_str(&attr.name);
                     buf.push('=');
-                    buf.push(*q);
-                    buf.push_str(v);
-                    buf.push(*q);
+                    buf.push(attr.quote);
+                    buf.push_str(&attr.value);
+                    buf.push(attr.quote);
                 }
                 buf.push_str("></script>");
             }
@@ -47,20 +47,19 @@ impl AssetNode {
                 buf.push_str(&self.path);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for (k, v, q) in &self.attrs {
+                for attr in &self.attrs {
                     buf.push(' ');
-                    buf.push_str(k);
+                    buf.push_str(&attr.name);
                     buf.push('=');
-                    buf.push(*q);
-                    buf.push_str(v);
-                    buf.push(*q);
+                    buf.push(attr.quote);
+                    buf.push_str(&attr.value);
+                    buf.push(attr.quote);
                 }
                 buf.push('>');
             }
         }
         Ok(())
     }
-
 }
 
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
@@ -104,16 +103,20 @@ pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
 fn separate_path_attr(
     attrs: Vec<(&str, &str, char)>,
     tag_name: &'static str,
-) -> Result<(String, Vec<(String, String, char)>), String> {
+) -> Result<(String, Vec<Attr>), String> {
     let mut src_path: Option<&str> = None;
-    let mut passthrough_attrs: Vec<(String, String, char)> = Vec::new();
+    let mut passthrough_attrs: Vec<Attr> = Vec::new();
 
     for (key, value, quote) in attrs {
         if key == "path" {
             src_path = Some(value);
             continue;
         }
-        passthrough_attrs.push((key.to_string(), value.to_string(), quote));
+        passthrough_attrs.push(Attr {
+            name: key.to_string(),
+            value: value.to_string(),
+            quote,
+        });
     }
 
     let src_path = match src_path {
@@ -213,8 +216,8 @@ mod tests {
                     kind: AssetKind::Script,
                     path: "test_files/asset.js".to_string(),
                     attrs: vec![
-                        ("foo".to_string(), "bar".to_string(), '"'),
-                        ("baz".to_string(), "qux".to_string(), '"'),
+                        Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
+                        Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                     ],
                 })
             );
@@ -230,8 +233,8 @@ mod tests {
                     kind: AssetKind::Script,
                     path: "test_files/asset.js".to_string(),
                     attrs: vec![
-                        ("foo".to_string(), "bar".to_string(), '\''),
-                        ("baz".to_string(), "qux".to_string(), '"'),
+                        Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '\'' },
+                        Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                     ],
                 })
             );
@@ -265,8 +268,8 @@ mod tests {
                     kind: AssetKind::Style,
                     path: "test_files/asset.css".to_string(),
                     attrs: vec![
-                        ("foo".to_string(), "bar".to_string(), '"'),
-                        ("baz".to_string(), "qux".to_string(), '"'),
+                        Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
+                        Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                     ],
                 })
             );
@@ -301,8 +304,8 @@ mod tests {
                 kind: AssetKind::Script,
                 path: "test_files/asset.js".to_string(),
                 attrs: vec![
-                    ("foo".to_string(), "bar".to_string(), '"'),
-                    ("baz".to_string(), "qux".to_string(), '"'),
+                    Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
+                    Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                 ],
             };
             let mut buf = String::new();
@@ -321,8 +324,8 @@ mod tests {
                 kind: AssetKind::Script,
                 path: "test_files/asset.js".to_string(),
                 attrs: vec![
-                    ("foo".to_string(), "bar".to_string(), '\''),
-                    ("baz".to_string(), "qux".to_string(), '"'),
+                    Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '\'' },
+                    Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                 ],
             };
             let mut buf = String::new();
@@ -356,8 +359,8 @@ mod tests {
                 kind: AssetKind::Style,
                 path: "test_files/asset.css".to_string(),
                 attrs: vec![
-                    ("foo".to_string(), "bar".to_string(), '"'),
-                    ("baz".to_string(), "qux".to_string(), '"'),
+                    Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
+                    Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
                 ],
             };
             let mut buf = String::new();
