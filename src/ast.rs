@@ -17,11 +17,8 @@ pub struct AssetNode {
 
 #[derive(Debug, PartialEq, Clone)]
 pub struct EachNode {
-    /// Path to the collection (e.g., ["people"] or ["person", "skills"])
-    pub items_path: Vec<String>,
-    /// The variable name to bind each item (e.g., "person")
-    pub item_binding: String,
-    /// Child nodes (may contain nested Each, variables, text, etc.)
+    pub item_binding: String, // name of 'as' attr, items='@data.people' as='person'
+    pub items_path: Vec<String>, // ["data", "people"],
     pub children: Vec<TemplateNode>,
 }
 
@@ -34,5 +31,3 @@ pub enum TemplateNode {
     VariableRaw(Vec<String>), // @!foo → raw/unescaped output (opt-in)
     Each(EachNode),           // <Each items="@list" as="item">...</Each>
 }
-// todo: nodes to use later
-// Component(...)

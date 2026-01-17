@@ -56,7 +56,6 @@ impl<'a> RenderContext<'a> {
             }
         }
 
-        // TODO: look into optimization for the non nested scope data case
         // not in any scope - resolve from root data
         resolve_path(self.root_data, segments)
     }
@@ -64,10 +63,6 @@ impl<'a> RenderContext<'a> {
 
 /// access nested data {"person": {"name": "Jane"}} with ["person", "name"] == Ok("Jane")
 fn resolve_path<'a>(data: &'a Value, segments: &[String]) -> Result<&'a Value, String> {
-    // TODO: return error if empty?
-    if segments.is_empty() {
-        return Ok(data);
-    }
     let mut current = data;
     for segment in segments {
         match current {

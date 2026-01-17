@@ -67,27 +67,25 @@ fn parse_items_path(value: &str) -> Result<Vec<String>, String> {
 }
 
 fn validate_binding(value: &str) -> Result<String, String> {
-    if value.is_empty() {
-        return Err("as binding cannot be empty".to_string());
-    }
+    let first_char = value
+        .chars()
+        .next()
+        .ok_or_else(|| "as binding cannot be empty".to_string())?;
 
-    if value.contains('.') {
-        return Err(format!(
-            "'as' binding must be a simple identifier without dots, got: \"{}\"",
-            value
-        ));
-    }
-
-    // TODO: remove unwrap even though we checked len
-    // TODO: make alphanumeric consistent with other vars
-    let first_char = value.chars().next().unwrap();
     if !first_char.is_alphabetic() && first_char != '_' {
         return Err(format!(
             "'as' binding must start with letter or underscore, got: \"{}\"",
             value
         ));
     }
+
     for c in value.chars() {
+        if c == '.' {
+            return Err(format!(
+                "'as' binding must be a simple identifier without dots, got: \"{}\"",
+                value
+            ));
+        }
         if !c.is_alphanumeric() && c != '_' {
             return Err(format!(
                 "'as' binding contains invalid character '{}' in: \"{}\"",
