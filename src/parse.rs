@@ -10,8 +10,6 @@ use crate::error::BlazeError;
 use crate::error::ParseErrorDetails;
 use crate::template_data::get_json_value;
 
-// Escapes HTML special characters to prevent XSS attacks.
-// Returns borrowed string if no escaping needed, avoiding allocation.
 fn html_escape(s: &str) -> Cow<'_, str> {
     let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
     match first_special_idx {
@@ -39,8 +37,8 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
     let (remaining, nodes) = many0(alt((
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
-        crate::variables::parse_escape,
-        crate::variables::parse_variable_raw, // Must come before parse_variable (@! before @)
+        crate::variables::parse_escape, // escape and raw syntax must be before parse_variable
+        crate::variables::parse_variable_raw,
         crate::variables::parse_variable,
         crate::text::parse_text,
     )))

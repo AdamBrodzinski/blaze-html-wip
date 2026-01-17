@@ -5,6 +5,7 @@ mod ast;
 mod engine;
 pub mod error;
 mod parse;
+mod parser;
 mod parser_error;
 mod shared_parsers;
 mod tag_asset;
