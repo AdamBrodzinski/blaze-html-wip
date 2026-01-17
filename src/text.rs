@@ -12,6 +12,7 @@ pub fn parse_text(input: &str) -> VResult<'_, TemplateNode> {
         "text content",
         verify(
             alt((
+                take_until("<Each"),
                 take_until("<Script"),
                 take_until("<Style"),
                 take_until("@"),

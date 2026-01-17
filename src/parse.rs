@@ -5,10 +5,10 @@ use nom::branch::alt;
 use nom::multi::many0;
 use serde_json::Value;
 
-use crate::ast::TemplateNode;
+use crate::ast::{EachNode, TemplateNode};
 use crate::error::BlazeError;
 use crate::error::ParseErrorDetails;
-use crate::template_data::get_json_value;
+use crate::render_context::RenderContext;
 
 fn html_escape(s: &str) -> Cow<'_, str> {
     let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
@@ -35,6 +35,7 @@ fn html_escape(s: &str) -> Cow<'_, str> {
 
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
+        crate::parser::tag_each::parse_each,
         crate::tag_asset::parse_script,
         crate::tag_asset::parse_style,
         crate::variables::parse_escape, // escape and raw syntax must be before parse_variable
@@ -62,64 +63,128 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
     Ok(nodes)
 }
 
-pub fn render_ast(
-    ast_nodes: &Vec<TemplateNode>,
-    data: &Value,
+/// Main entry point for rendering AST nodes with JSON data
+pub fn render_ast<'a>(
+    ast_nodes: &'a [TemplateNode],
+    data: &'a Value,
     template_len: usize,
 ) -> crate::error::Result<String> {
-    let mut str_buff = String::with_capacity(template_len);
-    for node in ast_nodes {
+    let mut ctx = RenderContext::new(data);
+    let mut buf = String::with_capacity(template_len);
+    render_nodes(ast_nodes, &mut ctx, &mut buf)?;
+    Ok(buf)
+}
+
+// separate render_nodes from render_ast for recursion
+fn render_nodes<'a>(
+    nodes: &'a [TemplateNode],
+    ctx: &mut RenderContext<'a>,
+    buf: &mut String,
+) -> crate::error::Result<()> {
+    for node in nodes {
         match node {
-            TemplateNode::Asset(asset) => asset.write_html(&mut str_buff)?,
-            TemplateNode::Escaped => str_buff.push('@'),
-            TemplateNode::Text(x) => str_buff.push_str(x),
+            TemplateNode::Asset(asset) => asset.write_html(buf)?,
+            TemplateNode::Each(each) => render_each(each, ctx, buf)?,
+            TemplateNode::Escaped => buf.push('@'),
+            TemplateNode::Text(x) => buf.push_str(x),
             TemplateNode::Variable(segments) => {
-                let json_value = get_json_value(data, segments)
+                let json_value = ctx
+                    .resolve(segments)
                     .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
-                match json_value {
-                    Value::String(x) => str_buff.push_str(&html_escape(x)),
-                    Value::Bool(x) => str_buff.push_str(&x.to_string()),
-                    Value::Number(x) => str_buff.push_str(&x.to_string()),
-                    Value::Null => str_buff.push_str("null"),
-                    Value::Array(_) => {
-                        return Err(BlazeError::render(
-                            segments.join("."),
-                            "cannot render array as string",
-                        ));
-                    }
-                    Value::Object(_) => {
-                        return Err(BlazeError::render(
-                            segments.join("."),
-                            "cannot render object as string",
-                        ));
-                    }
-                }
+                render_value_escaped(json_value, segments, buf)?;
             }
             TemplateNode::VariableRaw(segments) => {
-                let json_value = get_json_value(data, segments)
+                let json_value = ctx
+                    .resolve(segments)
                     .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
-                match json_value {
-                    Value::String(x) => str_buff.push_str(x),
-                    Value::Bool(x) => str_buff.push_str(&x.to_string()),
-                    Value::Number(x) => str_buff.push_str(&x.to_string()),
-                    Value::Null => str_buff.push_str("null"),
-                    Value::Array(_) => {
-                        return Err(BlazeError::render(
-                            segments.join("."),
-                            "cannot render array as string",
-                        ));
-                    }
-                    Value::Object(_) => {
-                        return Err(BlazeError::render(
-                            segments.join("."),
-                            "cannot render object as string",
-                        ));
-                    }
-                }
+                render_value_raw(json_value, segments, buf)?;
             }
         }
     }
-    Ok(str_buff)
+    Ok(())
+}
+
+fn render_each<'a>(
+    each: &'a EachNode,
+    ctx: &mut RenderContext<'a>,
+    buf: &mut String,
+) -> crate::error::Result<()> {
+    // find the topmost 'context layer' that matches the key, allows inner scopes to shadow outer
+    let collection = ctx
+        .resolve(&each.items_path)
+        .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?;
+
+    let items = match collection {
+        Value::Array(arr) => arr,
+        _ => {
+            return Err(BlazeError::render(
+                each.items_path.join("."),
+                "expected array for Each items",
+            ));
+        }
+    };
+
+    for item in items {
+        ctx.push_scope(&each.item_binding, item);
+        // ctx is passed in recursively
+        render_nodes(&each.children, ctx, buf)?;
+        ctx.pop_scope();
+    }
+
+    Ok(())
+}
+
+// TODO: combine escaped/raw with an escaped bool flag
+fn render_value_escaped(
+    value: &Value,
+    segments: &[String],
+    buf: &mut String,
+) -> crate::error::Result<()> {
+    match value {
+        Value::String(x) => buf.push_str(&html_escape(x)),
+        Value::Bool(x) => buf.push_str(&x.to_string()),
+        Value::Number(x) => buf.push_str(&x.to_string()),
+        Value::Null => buf.push_str("null"),
+        Value::Array(_) => {
+            return Err(BlazeError::render(
+                segments.join("."),
+                "cannot render array as string",
+            ));
+        }
+        Value::Object(_) => {
+            return Err(BlazeError::render(
+                segments.join("."),
+                "cannot render object as string",
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn render_value_raw(
+    value: &Value,
+    segments: &[String],
+    buf: &mut String,
+) -> crate::error::Result<()> {
+    match value {
+        Value::String(x) => buf.push_str(x),
+        Value::Bool(x) => buf.push_str(&x.to_string()),
+        Value::Number(x) => buf.push_str(&x.to_string()),
+        Value::Null => buf.push_str("null"),
+        Value::Array(_) => {
+            return Err(BlazeError::render(
+                segments.join("."),
+                "cannot render array as string",
+            ));
+        }
+        Value::Object(_) => {
+            return Err(BlazeError::render(
+                segments.join("."),
+                "cannot render object as string",
+            ));
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -318,6 +383,108 @@ mod tests {
             let data = json!({"active": true});
             let html = render_template(template, &data).unwrap();
             assert_eq!(html, "Active: true");
+        }
+    }
+
+    mod each_tag {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
+            let ast_nodes = parse_template_to_ast(page_template)?;
+            render_ast(&ast_nodes, data, page_template.len())
+        }
+
+        #[test]
+        fn simple_iteration() {
+            let template = r#"<Each items="@people" as="p">@p.name </Each>"#;
+            let data = json!({"people": [{"name": "Alice"}, {"name": "Bob"}]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Alice Bob ");
+        }
+
+        #[test]
+        fn nested_iteration() {
+            let template = r#"<Each items="@people" as="p">@p.name: <Each items="@p.skills" as="s">@s </Each></Each>"#;
+            let data = json!({
+                "people": [
+                    {"name": "Alice", "skills": ["Rust", "Go"]},
+                    {"name": "Bob", "skills": ["Python"]}
+                ]
+            });
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Alice: Rust Go Bob: Python ");
+        }
+
+        #[test]
+        fn outer_scope_accessible() {
+            let template = r#"<Each items="@items" as="item">@title: @item </Each>"#;
+            let data = json!({"title": "Item", "items": ["A", "B", "C"]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Item: A Item: B Item: C ");
+        }
+
+        #[test]
+        fn empty_array_renders_nothing() {
+            let template = r#"Before<Each items="@items" as="item">@item</Each>After"#;
+            let data = json!({"items": []});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "BeforeAfter");
+        }
+
+        #[test]
+        fn error_on_non_array() {
+            let template = r#"<Each items="@name" as="x">@x</Each>"#;
+            let data = json!({"name": "not an array"});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("expected array"));
+        }
+
+        #[test]
+        fn deeply_nested() {
+            let template = r#"<Each items="@a" as="x"><Each items="@x" as="y"><Each items="@y" as="z">@z</Each></Each></Each>"#;
+            let data = json!({"a": [[["1", "2"], ["3"]], [["4"]]]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "1234");
+        }
+
+        #[test]
+        fn with_html_content() {
+            let template = r#"<ul><Each items="@items" as="item"><li>@item</li></Each></ul>"#;
+            let data = json!({"items": ["A", "B"]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "<ul><li>A</li><li>B</li></ul>");
+        }
+
+        #[test]
+        fn iterating_objects() {
+            let template = r#"<Each items="@users" as="u">@u.id:@u.name;</Each>"#;
+            let data = json!({
+                "users": [
+                    {"id": 1, "name": "Alice"},
+                    {"id": 2, "name": "Bob"}
+                ]
+            });
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "1:Alice;2:Bob;");
+        }
+
+        #[test]
+        fn html_escaping_in_each() {
+            let template = r#"<Each items="@items" as="item">@item</Each>"#;
+            let data = json!({"items": ["<script>", "&amp;"]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "&lt;script&gt;&amp;amp;");
+        }
+
+        #[test]
+        fn raw_variable_in_each() {
+            let template = r#"<Each items="@items" as="item">@!item</Each>"#;
+            let data = json!({"items": ["<b>bold</b>"]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "<b>bold</b>");
         }
     }
 }

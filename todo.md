@@ -1,18 +1,12 @@
 # TODO
-
-- X examples directory
-- X benchmarks
-- X cache hash on asset to_html()
-- X finish caching ast on read
-- X add proper errors in engine
-- X escape variables
-- X handle poisened lock scenario
-- X handle quotes inside an attr, foo="alert('bar')"
-- X preserve attr quotes, foo='bar' renders foo="bar"
-- write html escape for attrs
+- component construct
+- combine escaped/raw with an escaped bool flag
 
 ## Future features
 - LRU cache eviction
+
+## Nice to have
+- look into optimization for the non nested scope data case
 
 ## Tests for Edge Cases
   - Empty template
