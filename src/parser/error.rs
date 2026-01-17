@@ -75,10 +75,13 @@ impl<I: fmt::Display> fmt::Display for BlazeParseError<I> {
 impl<I: fmt::Debug + fmt::Display> std::error::Error for BlazeParseError<I> {}
 
 /// Create a nom Failure error from a string message
-pub fn make_error(input: &str, msg: String) -> nom::Err<BlazeParseError<&str>> {
-    nom::Err::Failure(BlazeParseError::from_external_error(input, ErrorKind::Fail, msg))
+pub fn make_error(input: &str, msg: impl Into<String>) -> nom::Err<BlazeParseError<&str>> {
+    nom::Err::Failure(BlazeParseError::from_external_error(
+        input,
+        ErrorKind::Fail,
+        msg.into(),
+    ))
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -87,13 +90,19 @@ mod tests {
     #[test]
     fn from_external_error_preserves_message() {
         let input = "test input";
-        let error: BlazeParseError<&str> =
-            BlazeParseError::from_external_error(input, ErrorKind::MapRes, "custom error".to_string());
+        let error: BlazeParseError<&str> = BlazeParseError::from_external_error(
+            input,
+            ErrorKind::MapRes,
+            "custom error".to_string(),
+        );
 
         assert_eq!(error.errors.len(), 1);
         assert_eq!(
             error.errors[0],
-            (input, BlazeParseErrorKind::External("custom error".to_string()))
+            (
+                input,
+                BlazeParseErrorKind::External("custom error".to_string())
+            )
         );
     }
 }

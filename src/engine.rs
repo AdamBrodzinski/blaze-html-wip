@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{ast::TemplateNode, error::BlazeError, parse};
+use crate::{ast::TemplateNode, error::BlazeError, parser, render};
 
 /// Builder for configuring a [`BlazeTemplate`] instance.
 ///
@@ -143,7 +143,7 @@ impl BlazeTemplate {
     /// This is useful for warming up the cache at application startup.
     pub fn compile_page_template(&self, rel_page_path: &str) -> crate::error::Result<()> {
         let page_template = self.read_template(rel_page_path)?;
-        let ast_nodes = parse::parse_template_to_ast(&page_template)?;
+        let ast_nodes = parser::parse_template_to_ast(&page_template)?;
         if !self.inner.dev && self.inner.cache_ast {
             self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
         }
@@ -158,7 +158,7 @@ impl BlazeTemplate {
             match self.inner.ast_nodes.read() {
                 Ok(cache) => {
                     if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
-                        return parse::render_ast(cached_ast, data, *template_len);
+                        return render::render_ast(cached_ast, data, *template_len);
                     }
                 }
                 Err(_) => {
@@ -172,10 +172,10 @@ impl BlazeTemplate {
         }
 
         let page_template = self.read_template(rel_page_path)?;
-        let ast_nodes = parse::parse_template_to_ast(&page_template)?;
+        let ast_nodes = parser::parse_template_to_ast(&page_template)?;
         let template_len = page_template.len();
 
-        let result = parse::render_ast(&ast_nodes, data, template_len);
+        let result = render::render_ast(&ast_nodes, data, template_len);
 
         if should_cache {
             self.set_cached_ast(rel_page_path, ast_nodes, template_len);

@@ -10,8 +10,9 @@ use nom::combinator::cut;
 use nom::error::context;
 
 use crate::ast::{EachNode, TemplateNode};
-use crate::parser_error::{VResult, make_error};
-use crate::shared_parsers::attrs::parse_quoted_value;
+
+use super::error::{VResult, make_error};
+use super::shared::attrs::parse_quoted_value;
 
 pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<Each").parse(input)?;
@@ -41,7 +42,7 @@ pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
         parse_until_closing_each(input).map_err(|e| make_error(input, e))?;
 
     // parse inner content recursively
-    let children = crate::parse::parse_template_to_ast(inner_content)
+    let children = super::parse_template_to_ast(inner_content)
         .map_err(|e| make_error(inner_content, format!("Error parsing Each body: {}", e)))?;
 
     Ok((

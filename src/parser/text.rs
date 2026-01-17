@@ -5,7 +5,8 @@ use nom::combinator::{rest, verify};
 use nom::error::context;
 
 use crate::ast::TemplateNode;
-use crate::parser_error::VResult;
+
+use super::error::VResult;
 
 pub fn parse_text(input: &str) -> VResult<'_, TemplateNode> {
     let (remaining, text) = context(

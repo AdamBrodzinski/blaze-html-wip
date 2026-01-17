@@ -7,7 +7,7 @@ use nom::combinator::cut;
 use nom::error::context;
 use nom::sequence::{delimited, preceded, separated_pair, terminated};
 
-use crate::parser_error::VResult;
+use super::error::VResult;
 
 pub mod attrs {
     use super::*;

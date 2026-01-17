@@ -4,7 +4,8 @@ use nom::error::context;
 use nom::sequence::preceded;
 
 use crate::ast::TemplateNode;
-use crate::parser_error::VResult;
+
+use super::error::VResult;
 
 pub fn parse_escape(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = context("escape char", preceded(tag("@"), tag("@"))).parse(input)?;
@@ -94,7 +95,10 @@ mod tests {
         fn parses_nested_variable() {
             let template = "@person.first_name2 after";
             let (remaining, node) = parse_variable(template).unwrap();
-            assert_eq!(node, TemplateNode::Variable(vec!["person".into(), "first_name2".into()]));
+            assert_eq!(
+                node,
+                TemplateNode::Variable(vec!["person".into(), "first_name2".into()])
+            );
             assert_eq!(remaining, " after");
         }
     }
@@ -114,7 +118,10 @@ mod tests {
         fn parses_nested_raw_variable() {
             let template = "@!user.html_content after";
             let (remaining, node) = parse_variable_raw(template).unwrap();
-            assert_eq!(node, TemplateNode::VariableRaw(vec!["user".into(), "html_content".into()]));
+            assert_eq!(
+                node,
+                TemplateNode::VariableRaw(vec!["user".into(), "html_content".into()])
+            );
             assert_eq!(remaining, " after");
         }
     }

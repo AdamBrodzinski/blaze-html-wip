@@ -2,7 +2,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use crate::parser_error::{BlazeParseError, BlazeParseErrorKind};
+use crate::parser::error::{BlazeParseError, BlazeParseErrorKind};
 
 pub type Result<T> = std::result::Result<T, BlazeError>;
 
