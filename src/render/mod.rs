@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::ast::{EachNode, TemplateNode};
+use crate::ast::{EachNode, IfNode, TemplateNode};
 use crate::error::BlazeError;
 use context::RenderContext;
 
@@ -36,7 +36,7 @@ fn html_escape(s: &str) -> Cow<'_, str> {
     }
 }
 
-/// Main entry point for rendering AST nodes with JSON data
+// main entry point for rendering AST nodes
 pub fn render_ast<'a>(
     ast_nodes: &'a [TemplateNode],
     data: &'a Value,
@@ -59,6 +59,7 @@ fn render_nodes<'a>(
             TemplateNode::Asset(asset) => asset.write_html(buf)?,
             TemplateNode::Each(each) => render_each(each, ctx, buf)?,
             TemplateNode::Escaped => buf.push('@'),
+            TemplateNode::If(if_node) => render_if(if_node, ctx, buf)?,
             TemplateNode::Text(x) => buf.push_str(x),
             TemplateNode::Variable(segments) => {
                 let json_value = ctx
@@ -102,6 +103,38 @@ fn render_each<'a>(
         // ctx is passed in recursively
         render_nodes(&each.children, ctx, buf)?;
         ctx.pop_scope();
+    }
+
+    Ok(())
+}
+
+fn render_if<'a>(
+    if_node: &'a IfNode,
+    ctx: &mut RenderContext<'a>,
+    buf: &mut String,
+) -> crate::error::Result<()> {
+    let value = ctx
+        .resolve(&if_node.condition_path)
+        .map_err(|msg| BlazeError::render(if_node.condition_path.join("."), msg))?;
+
+    let condition = match value {
+        Value::Bool(b) => *b,
+        _ => {
+            return Err(BlazeError::render(
+                if_node.condition_path.join("."),
+                "If condition must be a boolean value",
+            ));
+        }
+    };
+
+    let should_render = if if_node.negate {
+        !condition
+    } else {
+        condition
+    };
+
+    if should_render {
+        render_nodes(&if_node.children, ctx, buf)?;
     }
 
     Ok(())
@@ -366,6 +399,184 @@ mod tests {
             let data = json!({"items": ["<b>bold</b>"]});
             let html = render_template(template, &data).unwrap();
             assert_eq!(html, "<b>bold</b>");
+        }
+    }
+
+    mod if_tag {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
+            let ast_nodes = parse_template_to_ast(page_template)?;
+            render_ast(&ast_nodes, data, page_template.len())
+        }
+
+        #[test]
+        fn true_condition_renders_when_true() {
+            let template = r#"<If true="@active">Active</If>"#;
+            let data = json!({"active": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Active");
+        }
+
+        #[test]
+        fn true_condition_skips_when_false() {
+            let template = r#"<If true="@active">Active</If>"#;
+            let data = json!({"active": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn false_condition_renders_when_false() {
+            let template = r#"<If false="@active">Inactive</If>"#;
+            let data = json!({"active": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Inactive");
+        }
+
+        #[test]
+        fn false_condition_skips_when_true() {
+            let template = r#"<If false="@active">Inactive</If>"#;
+            let data = json!({"active": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn nested_path_resolution() {
+            let template = r#"<If true="@user.is_admin">Admin</If>"#;
+            let data = json!({"user": {"is_admin": true}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Admin");
+        }
+
+        #[test]
+        fn with_variables_inside() {
+            let template = r#"<If true="@show">Hello @name!</If>"#;
+            let data = json!({"show": true, "name": "World"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Hello World!");
+        }
+
+        #[test]
+        fn multiple_if_tags() {
+            let template = r#"<If true="@one">One</If><If false="@one">NotOne</If>"#;
+            let data = json!({"one": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "One");
+        }
+
+        #[test]
+        fn nested_if_tags() {
+            let template = r#"<If true="@outer"><If true="@inner">Both</If></If>"#;
+            let data = json!({"outer": true, "inner": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Both");
+        }
+
+        #[test]
+        fn nested_if_outer_false() {
+            let template = r#"<If true="@outer"><If true="@inner">Both</If></If>"#;
+            let data = json!({"outer": false, "inner": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn inside_each_with_scope() {
+            let template =
+                r#"<Each items="@items" as="item"><If true="@item.active">@item.name </If></Each>"#;
+            let data = json!({
+                "items": [
+                    {"name": "Alice", "active": true},
+                    {"name": "Bob", "active": false},
+                    {"name": "Charlie", "active": true}
+                ]
+            });
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Alice Charlie ");
+        }
+
+        #[test]
+        fn inside_each_accessing_outer_scope() {
+            let template =
+                r#"<Each items="@items" as="item"><If true="@show_all">@item </If></Each>"#;
+            let data = json!({"show_all": true, "items": ["A", "B", "C"]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "A B C ");
+        }
+
+        #[test]
+        fn error_on_missing_variable() {
+            let template = r#"<If true="@missing">content</If>"#;
+            let data = json!({});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("missing"));
+        }
+
+        #[test]
+        fn error_on_non_boolean_string() {
+            let template = r#"<If true="@value">content</If>"#;
+            let data = json!({"value": "yes"});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("boolean"));
+        }
+
+        #[test]
+        fn error_on_non_boolean_number() {
+            let template = r#"<If true="@value">content</If>"#;
+            let data = json!({"value": 1});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("boolean"));
+        }
+
+        #[test]
+        fn error_on_non_boolean_null() {
+            let template = r#"<If true="@value">content</If>"#;
+            let data = json!({"value": null});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("boolean"));
+        }
+
+        #[test]
+        fn error_on_non_boolean_array() {
+            let template = r#"<If true="@value">content</If>"#;
+            let data = json!({"value": [1, 2, 3]});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("boolean"));
+        }
+
+        #[test]
+        fn error_on_non_boolean_object() {
+            let template = r#"<If true="@value">content</If>"#;
+            let data = json!({"value": {"foo": "bar"}});
+            let result = render_template(template, &data);
+            assert!(result.is_err());
+            let err = result.unwrap_err().to_string();
+            assert!(err.contains("boolean"));
+        }
+
+        #[test]
+        fn user_example_from_requirements() {
+            // data: { "one_is_active": true, "two_is_active": false }
+            let template = r#"<If true="@one_is_active">One Active</If>
+<If false="@one_is_active">One Disabled</If>
+<If true="@two_is_active">Two Active</If>
+<If false="@two_is_active">Two Disabled</If>"#;
+            let data = json!({"one_is_active": true, "two_is_active": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "One Active\n\n\nTwo Disabled");
         }
     }
 }

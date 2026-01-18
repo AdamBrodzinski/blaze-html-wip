@@ -6,6 +6,7 @@ pub mod error;
 mod shared;
 mod tag_asset;
 mod tag_each;
+mod tag_if;
 mod text;
 mod variables;
 
@@ -20,6 +21,7 @@ use crate::error::ParseErrorDetails;
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
         tag_each::parse_each,
+        tag_if::parse_if,
         tag_asset::parse_script,
         tag_asset::parse_style,
         variables::parse_escape, // escape and raw syntax must be before parse_variable
