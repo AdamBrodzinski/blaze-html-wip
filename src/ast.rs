@@ -40,8 +40,15 @@ pub struct EachNode {
 }
 
 #[derive(Debug, PartialEq, Clone)]
+pub enum ConditionMode {
+    Strict, // true="@var" or false="@var" - must be boolean
+    Truthy, // truthy="@var" or falsy="@var" - JS-like coercion
+}
+
+#[derive(Debug, PartialEq, Clone)]
 pub struct IfNode {
     pub condition_path: Vec<String>, // ["foo", "bar"] for @foo.bar
-    pub negate: bool,                // true when using false="@var"
+    pub negate: bool,                // true when using false="@var" or falsy="@var"
+    pub mode: ConditionMode,         // strict boolean vs JS-like truthiness
     pub children: Vec<TemplateNode>,
 }

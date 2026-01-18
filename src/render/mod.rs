@@ -9,7 +9,7 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::ast::{EachNode, IfNode, TemplateNode};
+use crate::ast::{ConditionMode, EachNode, IfNode, TemplateNode};
 use crate::error::BlazeError;
 use context::RenderContext;
 
@@ -117,14 +117,17 @@ fn render_if<'a>(
         .resolve(&if_node.condition_path)
         .map_err(|msg| BlazeError::render(if_node.condition_path.join("."), msg))?;
 
-    let condition = match value {
-        Value::Bool(b) => *b,
-        _ => {
-            return Err(BlazeError::render(
-                if_node.condition_path.join("."),
-                "If condition must be a boolean value",
-            ));
-        }
+    let condition = match if_node.mode {
+        ConditionMode::Strict => match value {
+            Value::Bool(b) => *b,
+            _ => {
+                return Err(BlazeError::render(
+                    if_node.condition_path.join("."),
+                    "If condition must be a boolean value",
+                ));
+            }
+        },
+        ConditionMode::Truthy => is_truthy(value),
     };
 
     let should_render = if if_node.negate {
@@ -138,6 +141,17 @@ fn render_if<'a>(
     }
 
     Ok(())
+}
+
+fn is_truthy(value: &Value) -> bool {
+    match value {
+        Value::Bool(b) => *b,
+        Value::Null => false,
+        Value::Number(n) => n.as_f64().map(|f| f != 0.0).unwrap_or(true),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    }
 }
 
 // TODO: combine escaped/raw with an escaped bool flag
@@ -577,6 +591,195 @@ mod tests {
             let data = json!({"one_is_active": true, "two_is_active": false});
             let html = render_template(template, &data).unwrap();
             assert_eq!(html, "One Active\n\n\nTwo Disabled");
+        }
+    }
+
+    mod if_tag_truthy {
+        use super::*;
+        use pretty_assertions::assert_eq;
+
+        fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
+            let ast_nodes = parse_template_to_ast(page_template)?;
+            render_ast(&ast_nodes, data, page_template.len())
+        }
+
+        // truthy tests - should render
+        #[test]
+        fn truthy_renders_for_true() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn truthy_renders_for_non_empty_string() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": "hello"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn truthy_renders_for_non_zero_number() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": 42});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn truthy_renders_for_negative_number() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": -1});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn truthy_renders_for_non_empty_array() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": [1, 2, 3]});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn truthy_renders_for_non_empty_object() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": {"key": "value"}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        // truthy tests - should NOT render (falsy values)
+        #[test]
+        fn truthy_skips_for_false() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn truthy_skips_for_null() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": null});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn truthy_skips_for_zero() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": 0});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn truthy_skips_for_empty_string() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": ""});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn truthy_skips_for_empty_array() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": []});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn truthy_skips_for_empty_object() {
+            let template = r#"<If truthy="@val">yes</If>"#;
+            let data = json!({"val": {}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        // falsy tests (inverse of truthy)
+        #[test]
+        fn falsy_renders_for_false() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn falsy_renders_for_null() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": null});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn falsy_renders_for_zero() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": 0});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn falsy_renders_for_empty_string() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": ""});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "yes");
+        }
+
+        #[test]
+        fn falsy_skips_for_true() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": true});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn falsy_skips_for_non_empty_string() {
+            let template = r#"<If falsy="@val">yes</If>"#;
+            let data = json!({"val": "hello"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        // scope tests
+        #[test]
+        fn truthy_inside_each_with_scope() {
+            let template =
+                r#"<Each items="@items" as="item"><If truthy="@item.name">@item.name </If></Each>"#;
+            let data = json!({
+                "items": [
+                    {"name": "Alice"},
+                    {"name": ""},
+                    {"name": "Bob"}
+                ]
+            });
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Alice Bob ");
+        }
+
+        #[test]
+        fn truthy_with_nested_path() {
+            let template = r#"<If truthy="@user.bio">Bio: @user.bio</If>"#;
+            let data = json!({"user": {"bio": "Hello world"}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Bio: Hello world");
+        }
+
+        #[test]
+        fn truthy_with_nested_path_empty() {
+            let template = r#"<If truthy="@user.bio">Bio: @user.bio</If>"#;
+            let data = json!({"user": {"bio": ""}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
         }
     }
 }
