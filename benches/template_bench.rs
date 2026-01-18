@@ -55,5 +55,61 @@ fn bench_variables(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench_plain_text, bench_asset_precompiled, bench_variables);
+fn bench_if_true(c: &mut Criterion) {
+    let blaze = BlazeTemplate::builder()
+        .template_root_dir("test_files")
+        .build();
+
+    blaze
+        .compile_page_template("pages/bench_if_true.html")
+        .unwrap();
+
+    let data = json!({ "is_true": true });
+
+    c.bench_function("if_true", |b| {
+        b.iter(|| blaze.render_page(black_box("pages/bench_if_true.html"), &data))
+    });
+}
+
+fn bench_if_truthy(c: &mut Criterion) {
+    let blaze = BlazeTemplate::builder()
+        .template_root_dir("test_files")
+        .build();
+
+    blaze
+        .compile_page_template("pages/bench_if_truthy.html")
+        .unwrap();
+
+    let data = json!({ "value": "hello world" });
+
+    c.bench_function("if_truthy", |b| {
+        b.iter(|| blaze.render_page(black_box("pages/bench_if_truthy.html"), &data))
+    });
+}
+
+fn bench_each(c: &mut Criterion) {
+    let blaze = BlazeTemplate::builder()
+        .template_root_dir("test_files")
+        .build();
+
+    blaze
+        .compile_page_template("pages/bench_each.html")
+        .unwrap();
+
+    let data = json!({ "people": [{ "name": "Person 1"}, { "name": "Person 2"}] });
+
+    c.bench_function("each", |b| {
+        b.iter(|| blaze.render_page(black_box("pages/bench_each.html"), &data))
+    });
+}
+
+criterion_group!(
+    benches,
+    bench_plain_text,
+    bench_asset_precompiled,
+    bench_variables,
+    bench_if_true,
+    bench_if_truthy,
+    bench_each
+);
 criterion_main!(benches);
