@@ -65,13 +65,13 @@ fn render_nodes<'a>(
                 let json_value = ctx
                     .resolve(segments)
                     .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
-                render_value_escaped(json_value, segments, buf)?;
+                render_value(json_value, segments, buf, true)?;
             }
             TemplateNode::VariableRaw(segments) => {
                 let json_value = ctx
                     .resolve(segments)
                     .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
-                render_value_raw(json_value, segments, buf)?;
+                render_value(json_value, segments, buf, false)?;
             }
         }
     }
@@ -154,40 +154,20 @@ fn is_truthy(value: &Value) -> bool {
     }
 }
 
-// TODO: combine escaped/raw with an escaped bool flag
-fn render_value_escaped(
+fn render_value(
     value: &Value,
     segments: &[String],
     buf: &mut String,
+    escape: bool,
 ) -> crate::error::Result<()> {
     match value {
-        Value::String(x) => buf.push_str(&html_escape(x)),
-        Value::Bool(x) => buf.push_str(&x.to_string()),
-        Value::Number(x) => buf.push_str(&x.to_string()),
-        Value::Null => buf.push_str("null"),
-        Value::Array(_) => {
-            return Err(BlazeError::render(
-                segments.join("."),
-                "cannot render array as string",
-            ));
+        Value::String(x) => {
+            if escape {
+                buf.push_str(&html_escape(x));
+            } else {
+                buf.push_str(x);
+            }
         }
-        Value::Object(_) => {
-            return Err(BlazeError::render(
-                segments.join("."),
-                "cannot render object as string",
-            ));
-        }
-    }
-    Ok(())
-}
-
-fn render_value_raw(
-    value: &Value,
-    segments: &[String],
-    buf: &mut String,
-) -> crate::error::Result<()> {
-    match value {
-        Value::String(x) => buf.push_str(x),
         Value::Bool(x) => buf.push_str(&x.to_string()),
         Value::Number(x) => buf.push_str(&x.to_string()),
         Value::Null => buf.push_str("null"),
