@@ -5,7 +5,12 @@ use std::{
     sync::{Arc, RwLock},
 };
 
-use crate::{ast::TemplateNode, error::BlazeError, parser, render};
+use crate::{
+    ast::TemplateNode,
+    error::BlazeError,
+    parser,
+    render::{self, ComponentResolver, ComponentTemplate},
+};
 
 /// Builder for configuring a [`BlazeTemplate`] instance.
 ///
@@ -72,6 +77,8 @@ impl BlazeTemplateBuilder {
                 cache_ast: self.cache_ast,
                 template_root_dir,
                 ast_nodes: RwLock::new(HashMap::new()),
+                components: RwLock::new(HashMap::new()),
+                component_ast: RwLock::new(HashMap::new()),
             }),
         }
     }
@@ -98,6 +105,8 @@ struct BlazeTemplateInner {
     cache_ast: bool,
     template_root_dir: PathBuf,
     ast_nodes: RwLock<HashMap<String, (Vec<TemplateNode>, usize)>>,
+    components: RwLock<HashMap<String, String>>,
+    component_ast: RwLock<HashMap<String, Arc<ComponentTemplate>>>,
 }
 
 impl std::fmt::Debug for BlazeTemplate {
@@ -144,6 +153,7 @@ impl BlazeTemplate {
     pub fn compile_page_template(&self, rel_page_path: &str) -> crate::error::Result<()> {
         let page_template = self.read_template(rel_page_path)?;
         let ast_nodes = parser::parse_template_to_ast(&page_template)?;
+        self.validate_component_references(&ast_nodes)?;
         if !self.inner.dev && self.inner.cache_ast {
             self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
         }
@@ -158,7 +168,7 @@ impl BlazeTemplate {
             match self.inner.ast_nodes.read() {
                 Ok(cache) => {
                     if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
-                        return render::render_ast(cached_ast, data, *template_len);
+                        return render::render_ast(cached_ast, data, *template_len, self);
                     }
                 }
                 Err(_) => {
@@ -175,7 +185,7 @@ impl BlazeTemplate {
         let ast_nodes = parser::parse_template_to_ast(&page_template)?;
         let template_len = page_template.len();
 
-        let result = render::render_ast(&ast_nodes, data, template_len);
+        let result = render::render_ast(&ast_nodes, data, template_len, self);
 
         if should_cache {
             self.set_cached_ast(rel_page_path, ast_nodes, template_len);
@@ -190,6 +200,68 @@ impl BlazeTemplate {
             .map_err(|e| BlazeError::template_io(&template_path, e))
     }
 
+    pub fn register_component(
+        &self,
+        name: impl Into<String>,
+        rel_component_path: impl Into<String>,
+    ) -> crate::error::Result<()> {
+        let name = name.into();
+        let path = rel_component_path.into();
+
+        if !is_valid_component_name(&name) {
+            return Err(BlazeError::render(
+                name,
+                "component names must start with an uppercase letter and be alphanumeric",
+            ));
+        }
+
+        if is_reserved_component_name(&name) {
+            return Err(BlazeError::render(name, "component tag name is reserved"));
+        }
+
+        let mut registry = self.write_component_registry_or_clear();
+        registry.insert(name.clone(), path);
+        self.write_component_cache_or_clear().remove(&name);
+        Ok(())
+    }
+
+    fn get_component_template(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
+        let should_cache = !self.inner.dev && self.inner.cache_ast;
+
+        if should_cache {
+            match self.inner.component_ast.read() {
+                Ok(cache) => {
+                    if let Some(template) = cache.get(name) {
+                        return Ok(template.clone());
+                    }
+                }
+                Err(_) => {
+                    if self.is_dev() {
+                        println!("Lock poisoned, clearing component cache");
+                    }
+                    self.clear_component_cache();
+                }
+            }
+        }
+
+        let rel_path = self.component_path(name)?;
+        let template = self.read_template(&rel_path)?;
+        let ast_nodes = parser::parse_template_to_ast(&template)?;
+        self.validate_component_references(&ast_nodes)?;
+
+        let component = Arc::new(ComponentTemplate {
+            ast: ast_nodes,
+            template_len: template.len(),
+        });
+
+        if should_cache {
+            let mut cache = self.write_component_cache_or_clear();
+            cache.insert(name.to_string(), component.clone());
+        }
+
+        Ok(component)
+    }
+
     fn set_cached_ast(&self, rel_page_path: &str, ast: Vec<TemplateNode>, len: usize) {
         let mut cache = self.write_cache_or_clear();
         cache.insert(rel_page_path.to_string(), (ast, len));
@@ -197,6 +269,77 @@ impl BlazeTemplate {
 
     fn clear_cache(&self) {
         self.write_cache_or_clear().clear();
+    }
+
+    fn component_path(&self, name: &str) -> crate::error::Result<String> {
+        match self.inner.components.read() {
+            Ok(registry) => registry.get(name).cloned().ok_or_else(|| {
+                BlazeError::render(name, "component not registered")
+            }),
+            Err(_) => {
+                self.write_component_registry_or_clear().clear();
+                Err(BlazeError::render(
+                    name,
+                    "component registry unavailable",
+                ))
+            }
+        }
+    }
+
+    fn clear_component_cache(&self) {
+        self.write_component_cache_or_clear().clear();
+    }
+
+    fn write_component_cache_or_clear(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, Arc<ComponentTemplate>>> {
+        match self.inner.component_ast.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                guard.clear();
+                guard
+            }
+        }
+    }
+
+    fn write_component_registry_or_clear(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, String>> {
+        match self.inner.components.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                guard.clear();
+                guard
+            }
+        }
+    }
+
+    fn validate_component_references(
+        &self,
+        nodes: &[TemplateNode],
+    ) -> crate::error::Result<()> {
+        let mut missing = Vec::new();
+        let registry = match self.inner.components.read() {
+            Ok(registry) => registry,
+            Err(_) => {
+                self.write_component_registry_or_clear().clear();
+                return Err(BlazeError::render(
+                    "component",
+                    "component registry unavailable",
+                ));
+            }
+        };
+
+        collect_missing_components(nodes, &registry, &mut missing);
+        if let Some(name) = missing.pop() {
+            return Err(BlazeError::render(
+                name,
+                "component not registered",
+            ));
+        }
+        Ok(())
     }
 
     fn write_cache_or_clear(
@@ -209,6 +352,45 @@ impl BlazeTemplate {
                 guard.clear();
                 guard
             }
+        }
+    }
+}
+
+impl ComponentResolver for BlazeTemplate {
+    fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
+        self.get_component_template(name)
+    }
+}
+
+fn is_valid_component_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) if first.is_ascii_uppercase() => {}
+        _ => return false,
+    }
+    chars.all(|c| c.is_ascii_alphanumeric() || c == '_')
+}
+
+fn is_reserved_component_name(name: &str) -> bool {
+    matches!(name, "Each" | "If" | "Script" | "Style" | "Slot")
+}
+
+fn collect_missing_components(
+    nodes: &[TemplateNode],
+    registry: &HashMap<String, String>,
+    missing: &mut Vec<String>,
+) {
+    for node in nodes {
+        match node {
+            TemplateNode::Component(component) => {
+                if !registry.contains_key(&component.name) {
+                    missing.push(component.name.clone());
+                }
+                collect_missing_components(&component.children, registry, missing);
+            }
+            TemplateNode::Each(each) => collect_missing_components(&each.children, registry, missing),
+            TemplateNode::If(if_node) => collect_missing_components(&if_node.children, registry, missing),
+            _ => {}
         }
     }
 }

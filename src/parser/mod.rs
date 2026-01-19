@@ -5,6 +5,7 @@
 pub mod error;
 mod shared;
 mod tag_asset;
+mod tag_component;
 mod tag_each;
 mod tag_if;
 mod text;
@@ -24,6 +25,8 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
         tag_if::parse_if,
         tag_asset::parse_script,
         tag_asset::parse_style,
+        tag_component::parse_component,
+        tag_component::parse_slot,
         variables::parse_escape, // escape and raw syntax must be before parse_variable
         variables::parse_variable_raw,
         variables::parse_variable,

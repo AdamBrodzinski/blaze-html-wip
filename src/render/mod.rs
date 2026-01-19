@@ -9,9 +9,25 @@ use std::borrow::Cow;
 
 use serde_json::Value;
 
-use crate::ast::{ConditionMode, EachNode, IfNode, TemplateNode};
+use crate::ast::{ComponentNode, ConditionMode, EachNode, IfNode, PropValue, TemplateNode};
 use crate::error::BlazeError;
-use context::RenderContext;
+use context::{RenderContext, ScopeValue};
+
+pub(crate) struct ComponentTemplate {
+    pub ast: Vec<TemplateNode>,
+    pub template_len: usize,
+}
+
+pub(crate) trait ComponentResolver {
+    fn resolve_component(&self, name: &str) -> crate::error::Result<std::sync::Arc<ComponentTemplate>>;
+}
+
+#[derive(Clone, Copy)]
+struct SlotRender<'s, 'a, R> {
+    children: &'s [TemplateNode],
+    ctx: *const RenderContext<'a>,
+    resolver: *const R,
+}
 
 fn html_escape(s: &str) -> Cow<'_, str> {
     let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
@@ -37,29 +53,61 @@ fn html_escape(s: &str) -> Cow<'_, str> {
 }
 
 // main entry point for rendering AST nodes
-pub fn render_ast<'a>(
+pub fn render_ast<'a, R: ComponentResolver>(
     ast_nodes: &'a [TemplateNode],
     data: &'a Value,
     template_len: usize,
+    resolver: &R,
 ) -> crate::error::Result<String> {
     let mut ctx = RenderContext::new(data);
     let mut buf = String::with_capacity(template_len);
-    render_nodes(ast_nodes, &mut ctx, &mut buf)?;
+    render_nodes(ast_nodes, &mut ctx, &mut buf, resolver)?;
     Ok(buf)
 }
 
 // separate render_nodes from render_ast for recursion
-fn render_nodes<'a>(
-    nodes: &'a [TemplateNode],
+fn render_nodes<'a, 'n, R: ComponentResolver>(
+    nodes: &'n [TemplateNode],
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
+    resolver: &R,
+) -> crate::error::Result<()> {
+    render_nodes_with_slot(nodes, ctx, buf, resolver, None)
+}
+
+fn render_nodes_with_slot<'a, 'n, 's, R: ComponentResolver>(
+    nodes: &'n [TemplateNode],
+    ctx: &mut RenderContext<'a>,
+    buf: &mut String,
+    resolver: &R,
+    slot: Option<&SlotRender<'s, 'a, R>>,
 ) -> crate::error::Result<()> {
     for node in nodes {
         match node {
             TemplateNode::Asset(asset) => asset.write_html(buf)?,
-            TemplateNode::Each(each) => render_each(each, ctx, buf)?,
+            TemplateNode::Component(component) => render_component(component, ctx, buf, resolver)?,
+            TemplateNode::Each(each) => render_each(each, ctx, buf, resolver, slot)?,
             TemplateNode::Escaped => buf.push('@'),
-            TemplateNode::If(if_node) => render_if(if_node, ctx, buf)?,
+            TemplateNode::If(if_node) => render_if(if_node, ctx, buf, resolver, slot)?,
+            TemplateNode::Slot => {
+                if let Some(slot) = slot {
+                    unsafe {
+                        // Safety: slot rendering uses the parent context exclusively while the component ctx is active.
+                        render_nodes_with_slot(
+                            slot.children,
+                            &mut *(slot.ctx as *mut RenderContext<'a>),
+                            buf,
+                            &*slot.resolver,
+                            None,
+                        )?;
+                    }
+                } else {
+                    return Err(BlazeError::render(
+                        "slot",
+                        "slot tag used outside component template",
+                    ));
+                }
+            }
             TemplateNode::Text(x) => buf.push_str(x),
             TemplateNode::Variable(segments) => {
                 let json_value = ctx
@@ -78,40 +126,49 @@ fn render_nodes<'a>(
     Ok(())
 }
 
-fn render_each<'a>(
-    each: &'a EachNode,
+fn render_each<'a, 'n, 's, R: ComponentResolver>(
+    each: &'n EachNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
+    resolver: &R,
+    slot: Option<&SlotRender<'s, 'a, R>>,
 ) -> crate::error::Result<()> {
     // find the topmost 'context layer' that matches the key, allows inner scopes to shadow outer
-    let collection = ctx
-        .resolve(&each.items_path)
-        .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?;
-
-    let items = match collection {
-        Value::Array(arr) => arr,
-        _ => {
-            return Err(BlazeError::render(
-                each.items_path.join("."),
-                "expected array for Each items",
-            ));
+    let (items_ptr, items_len) = {
+        let collection = ctx
+            .resolve(&each.items_path)
+            .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?;
+        match collection {
+            Value::Array(arr) => (arr.as_ptr(), arr.len()),
+            _ => {
+                return Err(BlazeError::render(
+                    each.items_path.join("."),
+                    "expected array for Each items",
+                ));
+            }
         }
     };
 
+    let items = unsafe {
+        // Safety: items_ptr comes from an immutable slice of the resolved array.
+        std::slice::from_raw_parts(items_ptr, items_len)
+    };
     for item in items {
-        ctx.push_scope(&each.item_binding, item);
+        ctx.push_scope_ref(&each.item_binding, item);
         // ctx is passed in recursively
-        render_nodes(&each.children, ctx, buf)?;
+        render_nodes_with_slot(&each.children, ctx, buf, resolver, slot)?;
         ctx.pop_scope();
     }
 
     Ok(())
 }
 
-fn render_if<'a>(
-    if_node: &'a IfNode,
+fn render_if<'a, 'n, 's, R: ComponentResolver>(
+    if_node: &'n IfNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
+    resolver: &R,
+    slot: Option<&SlotRender<'s, 'a, R>>,
 ) -> crate::error::Result<()> {
     let value = ctx
         .resolve(&if_node.condition_path)
@@ -137,10 +194,54 @@ fn render_if<'a>(
     };
 
     if should_render {
-        render_nodes(&if_node.children, ctx, buf)?;
+        render_nodes_with_slot(&if_node.children, ctx, buf, resolver, slot)?;
     }
 
     Ok(())
+}
+
+fn render_component<'a, 's, R: ComponentResolver>(
+    component: &'s ComponentNode,
+    parent_ctx: &mut RenderContext<'a>,
+    buf: &mut String,
+    resolver: &R,
+) -> crate::error::Result<()> {
+    let template = resolver.resolve_component(&component.name)?;
+    let mut component_ctx = RenderContext::new(parent_ctx.root_data());
+    let parent_ctx_ptr = parent_ctx as *const RenderContext<'_>;
+    buf.reserve(template.template_len);
+
+    for prop in &component.props {
+        match &prop.value {
+            PropValue::Static(value) => {
+                component_ctx.push_scope(
+                    &prop.name,
+                    ScopeValue::Owned(Value::String(value.clone())),
+                );
+            }
+            PropValue::VarPath(segments) => {
+                let resolved = unsafe {
+                    // Safety: parent_ctx_ptr is valid for this render; we only read data here.
+                    (*parent_ctx_ptr)
+                        .resolve(segments)
+                        .map_err(|msg| BlazeError::render(segments.join("."), msg))?
+                };
+                component_ctx.push_scope(&prop.name, ScopeValue::Borrowed(resolved));
+            }
+        }
+    }
+
+    if component.children.is_empty() {
+        return render_nodes_with_slot(&template.ast, &mut component_ctx, buf, resolver, None);
+    }
+
+    let slot = SlotRender {
+        children: &component.children,
+        ctx: parent_ctx_ptr,
+        resolver: resolver as *const R,
+    };
+
+    render_nodes_with_slot(&template.ast, &mut component_ctx, buf, resolver, Some(&slot))
 }
 
 fn is_truthy(value: &Value) -> bool {
@@ -193,6 +294,18 @@ mod tests {
     use crate::parser::parse_template_to_ast;
     use indoc::indoc;
     use serde_json::json;
+    use std::sync::Arc;
+
+    struct NoopResolver;
+
+    impl ComponentResolver for NoopResolver {
+        fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
+            Err(BlazeError::render(
+                name,
+                "component not registered",
+            ))
+        }
+    }
 
     #[cfg(feature = "cache-bust")]
     mod render {
@@ -204,7 +317,7 @@ mod tests {
         // helper to render ast for testing
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
             let ast_nodes = parse_template_to_ast(page_template)?;
-            render_ast(&ast_nodes, data, page_template.len())
+            render_ast(&ast_nodes, data, page_template.len(), &NoopResolver)
         }
 
         #[test]
@@ -239,7 +352,7 @@ mod tests {
 
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
             let ast_nodes = parse_template_to_ast(page_template)?;
-            render_ast(&ast_nodes, data, page_template.len())
+            render_ast(&ast_nodes, data, page_template.len(), &NoopResolver)
         }
 
         #[test]
@@ -300,7 +413,7 @@ mod tests {
 
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
             let ast_nodes = parse_template_to_ast(page_template)?;
-            render_ast(&ast_nodes, data, page_template.len())
+            render_ast(&ast_nodes, data, page_template.len(), &NoopResolver)
         }
 
         #[test]
@@ -402,7 +515,7 @@ mod tests {
 
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
             let ast_nodes = parse_template_to_ast(page_template)?;
-            render_ast(&ast_nodes, data, page_template.len())
+            render_ast(&ast_nodes, data, page_template.len(), &NoopResolver)
         }
 
         #[test]
@@ -580,7 +693,7 @@ mod tests {
 
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
             let ast_nodes = parse_template_to_ast(page_template)?;
-            render_ast(&ast_nodes, data, page_template.len())
+            render_ast(&ast_nodes, data, page_template.len(), &NoopResolver)
         }
 
         // truthy tests - should render
@@ -760,6 +873,57 @@ mod tests {
             let data = json!({"user": {"bio": ""}});
             let html = render_template(template, &data).unwrap();
             assert_eq!(html, "");
+        }
+    }
+
+    mod components {
+        use super::*;
+        use std::collections::HashMap;
+
+        struct TestResolver {
+            components: HashMap<String, Arc<ComponentTemplate>>,
+        }
+
+        impl ComponentResolver for TestResolver {
+            fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
+                self.components.get(name).cloned().ok_or_else(|| {
+                    BlazeError::render(name, "component not registered")
+                })
+            }
+        }
+
+        #[test]
+        fn renders_component_props_and_slot() {
+            let component_template = "<div>@first_name <slot/></div>";
+            let component_ast = parse_template_to_ast(component_template).unwrap();
+            let mut components = HashMap::new();
+            components.insert(
+                "Greeting".to_string(),
+                Arc::new(ComponentTemplate {
+                    ast: component_ast,
+                    template_len: component_template.len(),
+                }),
+            );
+            let resolver = TestResolver { components };
+
+            let page_template =
+                r#"<Greeting first_name="@person.name">Inner @first_name</Greeting>"#;
+            let page_ast = parse_template_to_ast(page_template).unwrap();
+            let data = json!({"person": {"name": "Jane"}, "first_name": "Root"});
+            let html = render_ast(&page_ast, &data, page_template.len(), &resolver).unwrap();
+
+            assert_eq!(html, "<div>Jane Inner Root</div>");
+        }
+
+        #[test]
+        fn slot_outside_component_errors() {
+            let page_template = "<slot/>";
+            let page_ast = parse_template_to_ast(page_template).unwrap();
+            let data = json!({});
+            let err = render_ast(&page_ast, &data, page_template.len(), &NoopResolver)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("slot tag used outside component"));
         }
     }
 }

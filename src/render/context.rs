@@ -1,9 +1,23 @@
 use serde_json::Value;
 
+pub(crate) enum ScopeValue<'a> {
+    Borrowed(&'a Value),
+    Owned(Value),
+}
+
+impl<'a> ScopeValue<'a> {
+    fn as_value(&self) -> &Value {
+        match self {
+            ScopeValue::Borrowed(value) => value,
+            ScopeValue::Owned(value) => value,
+        }
+    }
+}
+
 /// each layer in the variable scope chain
 struct ScopeLayer<'a> {
-    name: &'a str,    // <Each items="foo" name
-    value: &'a Value, // JSON data
+    name: String,          // <Each items="foo" name
+    value: ScopeValue<'a>, // JSON data
 }
 
 /// Render context with scope chain for variable resolution.
@@ -22,8 +36,19 @@ impl<'a> RenderContext<'a> {
         }
     }
 
-    pub fn push_scope(&mut self, name: &'a str, value: &'a Value) {
-        self.scope_stack.push(ScopeLayer { name, value });
+    pub fn root_data(&self) -> &'a Value {
+        self.root_data
+    }
+
+    pub fn push_scope(&mut self, name: &str, value: ScopeValue<'a>) {
+        self.scope_stack.push(ScopeLayer {
+            name: name.to_string(),
+            value,
+        });
+    }
+
+    pub fn push_scope_ref(&mut self, name: &str, value: &'a Value) {
+        self.push_scope(name, ScopeValue::Borrowed(value));
     }
 
     pub fn pop_scope(&mut self) {
@@ -36,7 +61,7 @@ impl<'a> RenderContext<'a> {
     /// 1. Check if first segment matches a binding in any scope (innermost first)
     /// 2. If matched, resolve remaining segments from that value
     /// 3. If no match, resolve from root_data
-    pub fn resolve(&self, segments: &[String]) -> Result<&'a Value, String> {
+    pub fn resolve(&self, segments: &[String]) -> Result<&Value, String> {
         if segments.is_empty() {
             return Err("Empty variable path".to_string());
         }
@@ -46,13 +71,13 @@ impl<'a> RenderContext<'a> {
         // search scope stack from innermost to outermost
         for scope in self.scope_stack.iter().rev() {
             // "person" in ["person", "name"] or in ["person"]
-            if scope.name == first_segment {
+            if scope.name == *first_segment {
                 // segments is ["person"], exact match for "person"
                 if segments.len() == 1 {
-                    return Ok(scope.value);
+                    return Ok(scope.value.as_value());
                 }
                 // segments is ["person", "name"], matched "person", pass remaining ["name"] to resolve remaining path
-                return resolve_path(scope.value, &segments[1..]);
+                return resolve_path(scope.value.as_value(), &segments[1..]);
             }
         }
 
@@ -108,7 +133,7 @@ mod tests {
         let person = &data["people"][0];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope("person", person);
+        ctx.push_scope_ref("person", person);
 
         // Should resolve from scope
         let result = ctx.resolve(&["person".to_string(), "name".to_string()]);
@@ -121,7 +146,7 @@ mod tests {
         let nested = &data["person"];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope("name", nested);
+        ctx.push_scope_ref("name", nested);
 
         // "name" now refers to the scope binding, not root
         let result = ctx.resolve(&["name".to_string()]).unwrap();
@@ -140,8 +165,8 @@ mod tests {
         let inner = &data["items"][1];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope("item", outer);
-        ctx.push_scope("item", inner);
+        ctx.push_scope_ref("item", outer);
+        ctx.push_scope_ref("item", inner);
 
         // Inner scope wins
         let result = ctx
@@ -167,7 +192,7 @@ mod tests {
         let person = &data["people"][0];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope("person", person);
+        ctx.push_scope_ref("person", person);
 
         // Can still access root data
         let result = ctx.resolve(&["page_name".to_string()]).unwrap();
