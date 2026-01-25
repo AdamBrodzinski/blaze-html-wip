@@ -170,21 +170,27 @@ fn render_if<'a, 'n, 's, R: ComponentResolver>(
     resolver: &R,
     slot: Option<&SlotRender<'s, 'a, R>>,
 ) -> crate::error::Result<()> {
-    let value = ctx
-        .resolve(&if_node.condition_path)
-        .map_err(|msg| BlazeError::render(if_node.condition_path.join("."), msg))?;
-
     let condition = match if_node.mode {
-        ConditionMode::Strict => match value {
-            Value::Bool(b) => *b,
-            _ => {
-                return Err(BlazeError::render(
-                    if_node.condition_path.join("."),
-                    "If condition must be a boolean value",
-                ));
+        ConditionMode::Exists => ctx.resolve(&if_node.condition_path).is_ok(),
+        ConditionMode::Strict | ConditionMode::Truthy => {
+            let value = ctx
+                .resolve(&if_node.condition_path)
+                .map_err(|msg| BlazeError::render(if_node.condition_path.join("."), msg))?;
+
+            match if_node.mode {
+                ConditionMode::Strict => match value {
+                    Value::Bool(b) => *b,
+                    _ => {
+                        return Err(BlazeError::render(
+                            if_node.condition_path.join("."),
+                            "If condition must be a boolean value",
+                        ));
+                    }
+                },
+                ConditionMode::Truthy => is_truthy(value),
+                ConditionMode::Exists => unreachable!("handled above"),
             }
-        },
-        ConditionMode::Truthy => is_truthy(value),
+        }
     };
 
     let should_render = if if_node.negate {
@@ -622,6 +628,38 @@ mod tests {
             assert!(result.is_err());
             let err = result.unwrap_err().to_string();
             assert!(err.contains("missing"));
+        }
+
+        #[test]
+        fn exists_renders_when_present() {
+            let template = r#"<If exists="@name">Hello @name</If>"#;
+            let data = json!({"name": "Ada"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Hello Ada");
+        }
+
+        #[test]
+        fn exists_renders_for_false_value() {
+            let template = r#"<If exists="@active">Active</If>"#;
+            let data = json!({"active": false});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Active");
+        }
+
+        #[test]
+        fn exists_skips_when_missing() {
+            let template = r#"<If exists="@missing">content</If>"#;
+            let data = json!({});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
+        }
+
+        #[test]
+        fn exists_skips_when_nested_missing() {
+            let template = r#"<If exists="@user.name">Hello</If>"#;
+            let data = json!({"user": {}});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "");
         }
 
         #[test]

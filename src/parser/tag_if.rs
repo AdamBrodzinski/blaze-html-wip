@@ -14,7 +14,7 @@ pub fn parse_if(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<If").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
 
-    // parse one of these attrs: truthy, falsy, true, false
+    // parse one of these attrs: truthy, falsy, true, false, exists
     let (input, (negate, mode, condition_path)) = parse_condition_attr(input)?;
 
     let (input, _) = multispace0.parse(input)?;
@@ -46,6 +46,7 @@ fn parse_condition_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<St
         parse_false_attr,
         parse_truthy_attr,
         parse_falsy_attr,
+        parse_exists_attr,
     ))
     .parse(input)
 }
@@ -88,6 +89,16 @@ fn parse_falsy_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
 
     Ok((input, (true, ConditionMode::Truthy, path)))
+}
+
+fn parse_exists_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
+    let (input, _) = context("exists attribute", tag("exists")).parse(input)?;
+    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, (_, value)) = cut(context("exists value", parse_quoted_value)).parse(input)?;
+
+    let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
+
+    Ok((input, (false, ConditionMode::Exists, path)))
 }
 
 // variable key inside attr quotes, ex: true="@foo.bar" -> ["foo", "bar"]
@@ -273,6 +284,23 @@ mod tests {
                     assert_eq!(if_node.condition_path, vec!["error"]);
                     assert!(if_node.negate);
                     assert_eq!(if_node.mode, ConditionMode::Truthy);
+                    assert_eq!(if_node.children.len(), 1);
+                }
+                _ => panic!("Expected If node"),
+            }
+        }
+
+        #[test]
+        fn simple_exists_condition() {
+            let input = r#"<If exists="@name">content</If>after"#;
+            let (remaining, node) = parse_if(input).unwrap();
+
+            assert_eq!(remaining, "after");
+            match node {
+                TemplateNode::If(if_node) => {
+                    assert_eq!(if_node.condition_path, vec!["name"]);
+                    assert!(!if_node.negate);
+                    assert_eq!(if_node.mode, ConditionMode::Exists);
                     assert_eq!(if_node.children.len(), 1);
                 }
                 _ => panic!("Expected If node"),
