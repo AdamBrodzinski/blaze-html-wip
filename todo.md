@@ -1,6 +1,10 @@
 # TODO
 - component construct
 - combine escaped/raw with an escaped bool flag
+- rename <slot/> to <Slot/>
+- add <If exits="@var_name"></If>
+- add case for empty attr value ""
+- handle cases for style tag, href-path
 
 ## Future features
 - LRU cache eviction
