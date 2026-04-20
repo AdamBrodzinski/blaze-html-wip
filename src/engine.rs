@@ -204,7 +204,7 @@ impl BlazeTemplate {
         &self,
         name: impl Into<String>,
         rel_component_path: impl Into<String>,
-    ) -> crate::error::Result<()> {
+    ) -> crate::error::Result<&Self> {
         let name = name.into();
         let path = rel_component_path.into();
 
@@ -222,7 +222,7 @@ impl BlazeTemplate {
         let mut registry = self.write_component_registry_or_clear();
         registry.insert(name.clone(), path);
         self.write_component_cache_or_clear().remove(&name);
-        Ok(())
+        Ok(self)
     }
 
     fn get_component_template(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
@@ -273,15 +273,13 @@ impl BlazeTemplate {
 
     fn component_path(&self, name: &str) -> crate::error::Result<String> {
         match self.inner.components.read() {
-            Ok(registry) => registry.get(name).cloned().ok_or_else(|| {
-                BlazeError::render(name, "component not registered")
-            }),
+            Ok(registry) => registry
+                .get(name)
+                .cloned()
+                .ok_or_else(|| BlazeError::render(name, "component not registered")),
             Err(_) => {
                 self.write_component_registry_or_clear().clear();
-                Err(BlazeError::render(
-                    name,
-                    "component registry unavailable",
-                ))
+                Err(BlazeError::render(name, "component registry unavailable"))
             }
         }
     }
@@ -316,10 +314,7 @@ impl BlazeTemplate {
         }
     }
 
-    fn validate_component_references(
-        &self,
-        nodes: &[TemplateNode],
-    ) -> crate::error::Result<()> {
+    fn validate_component_references(&self, nodes: &[TemplateNode]) -> crate::error::Result<()> {
         let mut missing = Vec::new();
         let registry = match self.inner.components.read() {
             Ok(registry) => registry,
@@ -334,10 +329,7 @@ impl BlazeTemplate {
 
         collect_missing_components(nodes, &registry, &mut missing);
         if let Some(name) = missing.pop() {
-            return Err(BlazeError::render(
-                name,
-                "component not registered",
-            ));
+            return Err(BlazeError::render(name, "component not registered"));
         }
         Ok(())
     }
@@ -388,8 +380,12 @@ fn collect_missing_components(
                 }
                 collect_missing_components(&component.children, registry, missing);
             }
-            TemplateNode::Each(each) => collect_missing_components(&each.children, registry, missing),
-            TemplateNode::If(if_node) => collect_missing_components(&if_node.children, registry, missing),
+            TemplateNode::Each(each) => {
+                collect_missing_components(&each.children, registry, missing)
+            }
+            TemplateNode::If(if_node) => {
+                collect_missing_components(&if_node.children, registry, missing)
+            }
             _ => {}
         }
     }
