@@ -59,7 +59,7 @@ pub fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
 }
 
 pub fn parse_slot(input: &str) -> VResult<'_, TemplateNode> {
-    let (input, _) = tag("<slot").parse(input)?;
+    let (input, _) = tag("<Slot").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = context("slot closing tag", tag("/>")).parse(input)?;
     Ok((input, TemplateNode::Slot))
@@ -225,7 +225,7 @@ mod tests {
 
     #[test]
     fn parse_slot_tag() {
-        let input = "<slot/>rest";
+        let input = "<Slot/>rest";
         let (remaining, node) = parse_slot(input).unwrap();
         assert_eq!(remaining, "rest");
         assert!(matches!(node, TemplateNode::Slot));

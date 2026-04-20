@@ -932,7 +932,7 @@ mod tests {
 
         #[test]
         fn renders_component_props_and_slot() {
-            let component_template = "<div>@first_name <slot/></div>";
+            let component_template = "<div>@first_name <Slot/></div>";
             let component_ast = parse_template_to_ast(component_template).unwrap();
             let mut components = HashMap::new();
             components.insert(
@@ -955,7 +955,7 @@ mod tests {
 
         #[test]
         fn slot_outside_component_errors() {
-            let page_template = "<slot/>";
+            let page_template = "<Slot/>";
             let page_ast = parse_template_to_ast(page_template).unwrap();
             let data = json!({});
             let err = render_ast(&page_ast, &data, page_template.len(), &NoopResolver)

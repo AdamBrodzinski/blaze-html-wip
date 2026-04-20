@@ -29,7 +29,7 @@ fn find_special_start(input: &str) -> Option<usize> {
                 || rest.starts_with("<If")
                 || rest.starts_with("<Script")
                 || rest.starts_with("<Style")
-                || rest.starts_with("<slot")
+                || rest.starts_with("<Slot")
             {
                 return Some(i);
             }
