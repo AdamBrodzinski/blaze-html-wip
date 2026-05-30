@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::ast::{ComponentNode, ConditionMode, EachNode, IfNode, PropValue, TemplateNode};
 use crate::error::BlazeError;
-use context::{RenderContext, ScopeValue};
+use context::{RenderContext, Resolved, ScopeValue};
 
 pub(crate) struct ComponentTemplate {
     pub ast: Vec<TemplateNode>,
@@ -23,13 +23,6 @@ pub(crate) trait ComponentResolver {
         &self,
         name: &str,
     ) -> crate::error::Result<std::sync::Arc<ComponentTemplate>>;
-}
-
-#[derive(Clone, Copy)]
-struct SlotRender<'s, 'a, R> {
-    children: &'s [TemplateNode],
-    ctx: *const RenderContext<'a>,
-    resolver: *const R,
 }
 
 fn html_escape(s: &str) -> Cow<'_, str> {
@@ -78,12 +71,12 @@ fn render_nodes<'a, 'n, R: ComponentResolver>(
     render_nodes_with_slot(nodes, ctx, buf, resolver, None)
 }
 
-fn render_nodes_with_slot<'a, 'n, 's, R: ComponentResolver>(
+fn render_nodes_with_slot<'a, 'n, R: ComponentResolver>(
     nodes: &'n [TemplateNode],
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
-    slot: Option<&SlotRender<'s, 'a, R>>,
+    slot: Option<&str>,
 ) -> crate::error::Result<()> {
     for node in nodes {
         match node {
@@ -92,25 +85,17 @@ fn render_nodes_with_slot<'a, 'n, 's, R: ComponentResolver>(
             TemplateNode::Each(each) => render_each(each, ctx, buf, resolver, slot)?,
             TemplateNode::Escaped => buf.push('@'),
             TemplateNode::If(if_node) => render_if(if_node, ctx, buf, resolver, slot)?,
-            TemplateNode::Slot => {
-                if let Some(slot) = slot {
-                    unsafe {
-                        // Safety: slot rendering uses the parent context exclusively while the component ctx is active.
-                        render_nodes_with_slot(
-                            slot.children,
-                            &mut *(slot.ctx as *mut RenderContext<'a>),
-                            buf,
-                            &*slot.resolver,
-                            None,
-                        )?;
-                    }
-                } else {
+            TemplateNode::Slot => match slot {
+                // Slot content is pre-rendered against the caller's context in
+                // render_component, so here it is just spliced in as HTML.
+                Some(slot_html) => buf.push_str(slot_html),
+                None => {
                     return Err(BlazeError::render(
                         "slot",
                         "slot tag used outside component template",
                     ));
                 }
-            }
+            },
             TemplateNode::Text(x) => buf.push_str(x),
             TemplateNode::Variable(segments) => {
                 let json_value = ctx
@@ -129,36 +114,31 @@ fn render_nodes_with_slot<'a, 'n, 's, R: ComponentResolver>(
     Ok(())
 }
 
-fn render_each<'a, 'n, 's, R: ComponentResolver>(
+fn render_each<'a, 'n, R: ComponentResolver>(
     each: &'n EachNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
-    slot: Option<&SlotRender<'s, 'a, R>>,
+    slot: Option<&str>,
 ) -> crate::error::Result<()> {
-    // find the topmost 'context layer' that matches the key, allows inner scopes to shadow outer
-    let (items_ptr, items_len) = {
-        let collection = ctx
-            .resolve(&each.items_path)
-            .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?;
-        match collection {
-            Value::Array(arr) => (arr.as_ptr(), arr.len()),
-            _ => {
-                return Err(BlazeError::render(
-                    each.items_path.join("."),
-                    "expected array for Each items",
-                ));
-            }
+    // Borrow the array with the data lifetime `'a` (not tied to `&ctx`), so we
+    // can iterate it while pushing per-item scopes back into `ctx` — no clone.
+    let items: &'a [Value] = match ctx
+        .resolve_borrowed(&each.items_path)
+        .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?
+    {
+        Resolved::Ref(Value::Array(arr)) => arr,
+        // a non-array, or a match in an owned (static string prop) scope
+        Resolved::Ref(_) | Resolved::Owned => {
+            return Err(BlazeError::render(
+                each.items_path.join("."),
+                "expected array for Each items",
+            ));
         }
     };
 
-    let items = unsafe {
-        // Safety: items_ptr comes from an immutable slice of the resolved array.
-        std::slice::from_raw_parts(items_ptr, items_len)
-    };
     for item in items {
         ctx.push_scope_ref(&each.item_binding, item);
-        // ctx is passed in recursively
         render_nodes_with_slot(&each.children, ctx, buf, resolver, slot)?;
         ctx.pop_scope();
     }
@@ -166,12 +146,12 @@ fn render_each<'a, 'n, 's, R: ComponentResolver>(
     Ok(())
 }
 
-fn render_if<'a, 'n, 's, R: ComponentResolver>(
+fn render_if<'a, 'n, R: ComponentResolver>(
     if_node: &'n IfNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
-    slot: Option<&SlotRender<'s, 'a, R>>,
+    slot: Option<&str>,
 ) -> crate::error::Result<()> {
     let condition = match if_node.mode {
         ConditionMode::Exists => ctx.resolve(&if_node.condition_path).is_ok(),
@@ -209,43 +189,56 @@ fn render_if<'a, 'n, 's, R: ComponentResolver>(
     Ok(())
 }
 
-fn render_component<'a, 's, R: ComponentResolver>(
-    component: &'s ComponentNode,
+fn render_component<'a, R: ComponentResolver>(
+    component: &ComponentNode,
     parent_ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
 ) -> crate::error::Result<()> {
     let template = resolver.resolve_component(&component.name)?;
     let mut component_ctx = RenderContext::new(parent_ctx.root_data());
-    let parent_ctx_ptr = parent_ctx as *const RenderContext<'_>;
     buf.reserve(template.template_len);
 
     for prop in &component.props {
         match &prop.value {
+            // Static props are literal strings from the template; the context
+            // owns a small `Value::String` for them.
             PropValue::Static(value) => {
                 component_ctx
                     .push_scope(&prop.name, ScopeValue::Owned(Value::String(value.clone())));
             }
-            PropValue::VarPath(segments) => {
-                let resolved = unsafe {
-                    // Safety: parent_ctx_ptr is valid for this render; we only read data here.
-                    (*parent_ctx_ptr)
+            PropValue::VarPath(segments) => match parent_ctx
+                .resolve_borrowed(segments)
+                .map_err(|msg| BlazeError::render(segments.join("."), msg))?
+            {
+                // Common case: the prop points at `'a` data — forward by
+                // reference, no clone.
+                Resolved::Ref(value) => component_ctx.push_scope_ref(&prop.name, value),
+                // Rare: forwarding an outer component's static prop. That value
+                // lives in the parent context, so clone the (small) value in.
+                Resolved::Owned => {
+                    let owned = parent_ctx
                         .resolve(segments)
                         .map_err(|msg| BlazeError::render(segments.join("."), msg))?
-                };
-                component_ctx.push_scope(&prop.name, ScopeValue::Borrowed(resolved));
-            }
+                        .clone();
+                    component_ctx.push_scope(&prop.name, ScopeValue::Owned(owned));
+                }
+            },
         }
     }
 
-    if component.children.is_empty() {
-        return render_nodes_with_slot(&template.ast, &mut component_ctx, buf, resolver, None);
-    }
-
-    let slot = SlotRender {
-        children: &component.children,
-        ctx: parent_ctx_ptr,
-        resolver: resolver as *const R,
+    // Pre-render the slot content (the component's children) against the parent
+    // context. Slot content is evaluated in the caller's scope, which does not
+    // change while the component body renders, so rendering it once up front is
+    // equivalent to rendering it lazily at each <Slot/> — and needs no aliasing
+    // of the parent and component contexts. Skipped when the template has no slot
+    // so unused children keep their original "not evaluated" behavior.
+    let slot_html = if !component.children.is_empty() && contains_slot(&template.ast) {
+        let mut slot_buf = String::new();
+        render_nodes_with_slot(&component.children, parent_ctx, &mut slot_buf, resolver, None)?;
+        Some(slot_buf)
+    } else {
+        None
     };
 
     render_nodes_with_slot(
@@ -253,8 +246,21 @@ fn render_component<'a, 's, R: ComponentResolver>(
         &mut component_ctx,
         buf,
         resolver,
-        Some(&slot),
+        slot_html.as_deref(),
     )
+}
+
+/// Whether the template tree renders a `<Slot/>` in a position that receives this
+/// component's slot content. The slot is threaded through `If`/`Each` bodies, but
+/// a nested component's children bind to *that* component, so we do not recurse
+/// into `Component` nodes here.
+fn contains_slot(nodes: &[TemplateNode]) -> bool {
+    nodes.iter().any(|node| match node {
+        TemplateNode::Slot => true,
+        TemplateNode::If(if_node) => contains_slot(&if_node.children),
+        TemplateNode::Each(each) => contains_slot(&each.children),
+        _ => false,
+    })
 }
 
 fn is_truthy(value: &Value) -> bool {
@@ -979,6 +985,47 @@ mod tests {
                 .unwrap_err()
                 .to_string();
             assert!(err.contains("slot tag used outside component"));
+        }
+
+        fn resolver_with(components: &[(&str, &str)]) -> TestResolver {
+            let mut map = HashMap::new();
+            for (name, template) in components {
+                let ast = parse_template_to_ast(template).unwrap();
+                map.insert(
+                    name.to_string(),
+                    Arc::new(ComponentTemplate {
+                        ast,
+                        template_len: template.len(),
+                    }),
+                );
+            }
+            TestResolver { components: map }
+        }
+
+        #[test]
+        fn slot_content_with_each_mutates_parent_scope() {
+            // Slot content is pre-rendered against the parent context; an Each
+            // inside it pushes/pops scopes on that parent. Regression for the
+            // safe (clone-based) slot + Each rendering.
+            let resolver = resolver_with(&[("Wrap", "<section><Slot/></section>")]);
+            let page = r#"<Wrap><Each items="@xs" as="x">@x;</Each></Wrap>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "xs": ["a", "b", "c"] });
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            assert_eq!(html, "<section>a;b;c;</section>");
+        }
+
+        #[test]
+        fn slot_inside_if_with_varpath_prop() {
+            // Template uses <Slot/> inside an If (contains_slot must recurse),
+            // a VarPath prop (resolved from parent and cloned into the component
+            // scope), and slot content that reads a parent-scope variable.
+            let resolver = resolver_with(&[("Card", r#"<If true="@show"><h2>@title</h2> <Slot/></If>"#)]);
+            let page = r#"<Card show="@flag" title="Hi">body @name</Card>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "flag": true, "name": "Zoé" });
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            assert_eq!(html, "<h2>Hi</h2> body Zoé");
         }
     }
 }

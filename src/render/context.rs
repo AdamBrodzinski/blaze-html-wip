@@ -1,5 +1,11 @@
 use serde_json::Value;
 
+/// A value bound into a scope layer.
+///
+/// `Borrowed` points into the `'a` data (root data or an `Each` element); it
+/// carries the data lifetime, so it can be handed back out of [`RenderContext`]
+/// without cloning. `Owned` holds a value the context owns (a static component
+/// prop) and can only be lent for as long as the context lives.
 pub(crate) enum ScopeValue<'a> {
     Borrowed(&'a Value),
     Owned(Value),
@@ -12,17 +18,40 @@ impl<'a> ScopeValue<'a> {
             ScopeValue::Owned(value) => value,
         }
     }
+
+    /// The underlying `&'a Value` when this layer borrows from the data, else
+    /// `None` for an owned layer.
+    fn borrowed(&self) -> Option<&'a Value> {
+        match self {
+            ScopeValue::Borrowed(value) => Some(value),
+            ScopeValue::Owned(_) => None,
+        }
+    }
+}
+
+/// Result of [`RenderContext::resolve_borrowed`].
+pub(crate) enum Resolved<'a> {
+    /// Value backed by the `'a` data — usable without cloning.
+    Ref(&'a Value),
+    /// Match landed in an owned scope (a static prop); the caller may clone via
+    /// [`RenderContext::resolve`] if it needs ownership.
+    Owned,
 }
 
 /// each layer in the variable scope chain
 struct ScopeLayer<'a> {
     name: String,          // <Each items="foo" name
-    value: ScopeValue<'a>, // JSON data
+    value: ScopeValue<'a>, // borrowed data or an owned prop value
 }
 
 /// Render context with scope chain for variable resolution.
 /// The scope chain is searched from innermost (last) to outermost (first).
 /// The root_data is the fallback for top-level variables.
+///
+/// Scope values are stored *by reference* into the `'a` data wherever possible
+/// (`Each` bindings, variable props), so rendering never deep-clones the input
+/// JSON. The only owned entries are static component props (small, literal
+/// strings from the template).
 pub struct RenderContext<'a> {
     root_data: &'a Value,
     scope_stack: Vec<ScopeLayer<'a>>,
@@ -47,6 +76,7 @@ impl<'a> RenderContext<'a> {
         });
     }
 
+    /// Push a scope that borrows from the `'a` data (no clone).
     pub fn push_scope_ref(&mut self, name: &str, value: &'a Value) {
         self.push_scope(name, ScopeValue::Borrowed(value));
     }
@@ -83,6 +113,39 @@ impl<'a> RenderContext<'a> {
 
         // not in any scope - resolve from root data
         resolve_path(self.root_data, segments)
+    }
+
+    /// Like [`resolve`](Self::resolve), but yields a reference carrying the data
+    /// lifetime `'a` when the value is backed by borrowed data (the root data or
+    /// an `Each` binding). When the match lands in an owned scope (a static prop)
+    /// it returns [`Resolved::Owned`] so the caller can clone only if it must.
+    ///
+    /// This is what lets `Each` hold onto the array while pushing per-item scopes,
+    /// and lets variable props forward by reference — both without cloning the
+    /// underlying JSON.
+    pub fn resolve_borrowed(&self, segments: &[String]) -> Result<Resolved<'a>, String> {
+        if segments.is_empty() {
+            return Err("Empty variable path".to_string());
+        }
+
+        let first_segment = &segments[0];
+
+        for scope in self.scope_stack.iter().rev() {
+            if scope.name == *first_segment {
+                let Some(value) = scope.value.borrowed() else {
+                    // matched an owned (static prop) layer
+                    return Ok(Resolved::Owned);
+                };
+                // `value` is `&'a Value`, so the result keeps the `'a` lifetime
+                // rather than borrowing `self`.
+                if segments.len() == 1 {
+                    return Ok(Resolved::Ref(value));
+                }
+                return resolve_path(value, &segments[1..]).map(Resolved::Ref);
+            }
+        }
+
+        resolve_path(self.root_data, segments).map(Resolved::Ref)
     }
 }
 

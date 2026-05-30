@@ -20,3 +20,9 @@
   - Very large templates
   - Unicode in paths/attributes
   - Path traversal attempts
+
+
+## Future refactors
+
+- One small allocation remains that I did not touch: push_scope still does name.to_string() per scope entry (review's low-priority item). It's a tiny fixed-size string bounded by template structure, not data size — and removing it means borrowing the binding name from the AST, which re-entangles the node and data lifetimes.
+
