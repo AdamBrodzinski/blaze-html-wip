@@ -33,7 +33,13 @@ fn find_special_start(input: &str) -> Option<usize> {
             {
                 return Some(i);
             }
-            if rest.as_bytes().get(1).copied().map(|b| b.is_ascii_uppercase()) == Some(true) {
+            if rest
+                .as_bytes()
+                .get(1)
+                .copied()
+                .map(|b| b.is_ascii_uppercase())
+                == Some(true)
+            {
                 return Some(i);
             }
         }

@@ -16,7 +16,7 @@ use nom::sequence::preceded;
 
 use crate::ast::{AssetKind, AssetNode, Attr, TemplateNode};
 
-use super::error::{make_error, VResult};
+use super::error::{VResult, make_error};
 use super::shared::attrs::{parse_attr, parse_quoted_value};
 
 pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {

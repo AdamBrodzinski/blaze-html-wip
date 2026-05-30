@@ -1,6 +1,7 @@
 use serde_json::Value;
 use std::{
     collections::HashMap,
+    fmt::Debug,
     path::PathBuf,
     sync::{Arc, RwLock},
 };
@@ -394,6 +395,8 @@ fn collect_missing_components(
 #[allow(clippy::bool_assert_comparison)]
 #[cfg(test)]
 mod tests {
+    use std::ptr::fn_addr_eq;
+
     use super::*;
     use serde_json::json;
 

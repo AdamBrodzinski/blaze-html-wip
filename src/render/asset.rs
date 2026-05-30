@@ -96,17 +96,23 @@ mod tests {
             kind: AssetKind::Script,
             path: "test_files/asset.js".to_string(),
             attrs: vec![
-                Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
-                Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
+                Attr {
+                    name: "foo".to_string(),
+                    value: "bar".to_string(),
+                    quote: '"',
+                },
+                Attr {
+                    name: "baz".to_string(),
+                    value: "qux".to_string(),
+                    quote: '"',
+                },
             ],
         };
         let mut buf = String::new();
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(
-                r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#
-            )
+            format!(r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#)
         );
     }
 
@@ -116,17 +122,23 @@ mod tests {
             kind: AssetKind::Script,
             path: "test_files/asset.js".to_string(),
             attrs: vec![
-                Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '\'' },
-                Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
+                Attr {
+                    name: "foo".to_string(),
+                    value: "bar".to_string(),
+                    quote: '\'',
+                },
+                Attr {
+                    name: "baz".to_string(),
+                    value: "qux".to_string(),
+                    quote: '"',
+                },
             ],
         };
         let mut buf = String::new();
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(
-                r#"<script src="test_files/asset.js?{JS_HASH}" foo='bar' baz="qux"></script>"#
-            )
+            format!(r#"<script src="test_files/asset.js?{JS_HASH}" foo='bar' baz="qux"></script>"#)
         );
     }
 
@@ -151,8 +163,16 @@ mod tests {
             kind: AssetKind::Style,
             path: "test_files/asset.css".to_string(),
             attrs: vec![
-                Attr { name: "foo".to_string(), value: "bar".to_string(), quote: '"' },
-                Attr { name: "baz".to_string(), value: "qux".to_string(), quote: '"' },
+                Attr {
+                    name: "foo".to_string(),
+                    value: "bar".to_string(),
+                    quote: '"',
+                },
+                Attr {
+                    name: "baz".to_string(),
+                    value: "qux".to_string(),
+                    quote: '"',
+                },
             ],
         };
         let mut buf = String::new();

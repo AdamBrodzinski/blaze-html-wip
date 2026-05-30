@@ -1,10 +1,12 @@
 # TODO
-- component construct
-- combine escaped/raw with an escaped bool flag
-- rename <slot/> to <Slot/>
-- add <If exits="@var_name"></If>
-- add case for empty attr value ""
 - handle cases for style tag, href-path
+- ? combine escaped/raw with an escaped bool flag
+- add test case for empty attr value ""
+- consider raw unescaped as @@!
+- X component construct
+- X add <If exits="@var_name"></If>
+- X rename <slot/> to <Slot/>
+- X make register component return blaze instance
 
 ## Future features
 - LRU cache eviction

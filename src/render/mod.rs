@@ -19,7 +19,10 @@ pub(crate) struct ComponentTemplate {
 }
 
 pub(crate) trait ComponentResolver {
-    fn resolve_component(&self, name: &str) -> crate::error::Result<std::sync::Arc<ComponentTemplate>>;
+    fn resolve_component(
+        &self,
+        name: &str,
+    ) -> crate::error::Result<std::sync::Arc<ComponentTemplate>>;
 }
 
 #[derive(Clone, Copy)]
@@ -220,10 +223,8 @@ fn render_component<'a, 's, R: ComponentResolver>(
     for prop in &component.props {
         match &prop.value {
             PropValue::Static(value) => {
-                component_ctx.push_scope(
-                    &prop.name,
-                    ScopeValue::Owned(Value::String(value.clone())),
-                );
+                component_ctx
+                    .push_scope(&prop.name, ScopeValue::Owned(Value::String(value.clone())));
             }
             PropValue::VarPath(segments) => {
                 let resolved = unsafe {
@@ -247,7 +248,13 @@ fn render_component<'a, 's, R: ComponentResolver>(
         resolver: resolver as *const R,
     };
 
-    render_nodes_with_slot(&template.ast, &mut component_ctx, buf, resolver, Some(&slot))
+    render_nodes_with_slot(
+        &template.ast,
+        &mut component_ctx,
+        buf,
+        resolver,
+        Some(&slot),
+    )
 }
 
 fn is_truthy(value: &Value) -> bool {
@@ -306,10 +313,7 @@ mod tests {
 
     impl ComponentResolver for NoopResolver {
         fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
-            Err(BlazeError::render(
-                name,
-                "component not registered",
-            ))
+            Err(BlazeError::render(name, "component not registered"))
         }
     }
 
@@ -923,10 +927,14 @@ mod tests {
         }
 
         impl ComponentResolver for TestResolver {
-            fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
-                self.components.get(name).cloned().ok_or_else(|| {
-                    BlazeError::render(name, "component not registered")
-                })
+            fn resolve_component(
+                &self,
+                name: &str,
+            ) -> crate::error::Result<Arc<ComponentTemplate>> {
+                self.components
+                    .get(name)
+                    .cloned()
+                    .ok_or_else(|| BlazeError::render(name, "component not registered"))
             }
         }
 

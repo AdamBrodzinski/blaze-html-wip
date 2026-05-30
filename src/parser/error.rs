@@ -44,7 +44,9 @@ impl<I> ParseError<I> for BlazeParseError<I> {
 
 impl<I> ContextError<I> for BlazeParseError<I> {
     fn add_context(input: I, ctx: &'static str, mut other: Self) -> Self {
-        other.errors.push((input, BlazeParseErrorKind::Context(ctx)));
+        other
+            .errors
+            .push((input, BlazeParseErrorKind::Context(ctx)));
         other
     }
 }

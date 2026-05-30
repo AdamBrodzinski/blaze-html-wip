@@ -3,13 +3,13 @@ use nom::branch::alt;
 use nom::bytes::complete::{tag, take_while, take_while_m_n};
 use nom::character::complete::{multispace0, multispace1};
 use nom::combinator::recognize;
-use nom::error::{context, ErrorKind, ParseError};
+use nom::error::{ErrorKind, ParseError, context};
 use nom::multi::many0;
 use nom::sequence::preceded;
 
 use crate::ast::{ComponentNode, ComponentProp, PropValue, TemplateNode};
 
-use super::error::{make_error, BlazeParseError, VResult};
+use super::error::{BlazeParseError, VResult, make_error};
 use super::shared::attrs::parse_attr;
 
 const RESERVED_COMPONENTS: [&str; 5] = ["Each", "If", "Script", "Style", "Slot"];
@@ -45,8 +45,12 @@ pub fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
     let (remaining, inner_content) =
         parse_until_closing_component(input, name).map_err(|e| make_error(input, e))?;
 
-    let children = super::parse_template_to_ast(inner_content)
-        .map_err(|e| make_error(inner_content, format!("Error parsing component body: {}", e)))?;
+    let children = super::parse_template_to_ast(inner_content).map_err(|e| {
+        make_error(
+            inner_content,
+            format!("Error parsing component body: {}", e),
+        )
+    })?;
 
     Ok((
         remaining,
@@ -104,7 +108,10 @@ fn parse_props(attrs: Vec<(&str, &str, char)>) -> Result<Vec<ComponentProp>, Str
     Ok(props)
 }
 
-fn parse_until_closing_component<'a>(input: &'a str, name: &str) -> Result<(&'a str, &'a str), String> {
+fn parse_until_closing_component<'a>(
+    input: &'a str,
+    name: &str,
+) -> Result<(&'a str, &'a str), String> {
     let mut depth = 1;
     let mut pos = 0;
 
@@ -214,10 +221,7 @@ mod tests {
         let (_, node) = parse_component(input).unwrap();
         match node {
             TemplateNode::Component(component) => {
-                assert!(matches!(
-                    component.props[0].value,
-                    PropValue::VarPath(_)
-                ));
+                assert!(matches!(component.props[0].value, PropValue::VarPath(_)));
             }
             _ => panic!("Expected Component node"),
         }

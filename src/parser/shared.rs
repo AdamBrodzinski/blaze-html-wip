@@ -48,6 +48,7 @@ pub mod attrs {
     }
 
     fn is_attr_name_char(c: char) -> bool {
+        // todo should this start with alpha only?
         c.is_ascii_alphanumeric() || c == '-' || c == '_'
     }
 }

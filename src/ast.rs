@@ -7,10 +7,10 @@ pub enum TemplateNode {
     Component(ComponentNode), // <MyComponent /> or <MyComponent>...</MyComponent>
     Each(EachNode),           // <Each items="@list" as="item">...</Each>
     Escaped,                  // @@ character that renders to @
-    If(IfNode),               // <If true="@var">...</If>, <If false="@var">...</If>, <If exists="@var">...</If>
-    Slot,                     // <slot/> placeholder inside component templates
-    Text(String),             // anything that is not a template construct
-    Variable(Vec<String>),    // @foo - HTML-escaped output (safe by default)
+    If(IfNode), // <If true="@var">...</If>, <If false="@var">...</If>, <If exists="@var">...</If>
+    Slot,       // <Slot/> placeholder inside component templates
+    Text(String), // anything that is not a template construct
+    Variable(Vec<String>), // @foo - HTML-escaped output (safe by default)
     VariableRaw(Vec<String>), // @!foo - raw/unescaped output (opt-in)
 }
 
@@ -62,9 +62,9 @@ pub enum PropValue {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ConditionMode {
-    Strict, // true="@var" or false="@var" - must be boolean
-    Truthy, // truthy="@var" or falsy="@var" - JS-like coercion
-    Exists, // exists="@var" - only checks presence of the path
+    Strict, // <If true="@var" or false="@var" - must be boolean
+    Truthy, // <If truthy="@var" or falsy="@var" - JS-like coercion
+    Exists, // <If exists="@var" - only checks presence of the path
 }
 
 #[derive(Debug, PartialEq, Clone)]

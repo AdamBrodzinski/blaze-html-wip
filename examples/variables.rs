@@ -18,7 +18,9 @@ fn main() {
         }
     });
 
-    let result = blaze.render_page("pages/bench_variables.html", &data).unwrap();
+    let result = blaze
+        .render_page("pages/bench_variables.html", &data)
+        .unwrap();
 
     println!("{}", result);
 }
