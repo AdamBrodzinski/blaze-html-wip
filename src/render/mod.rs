@@ -577,6 +577,15 @@ mod tests {
         }
 
         #[test]
+        fn utf8_body_renders() {
+            // regression: multibyte chars in a block body must not panic
+            let template = r#"<If true="@show">Café 👋 @name 日本語</If>"#;
+            let data = json!({"show": true, "name": "Zoé"});
+            let html = render_template(template, &data).unwrap();
+            assert_eq!(html, "Café 👋 Zoé 日本語");
+        }
+
+        #[test]
         fn multiple_if_tags() {
             let template = r#"<If true="@one">One</If><If false="@one">NotOne</If>"#;
             let data = json!({"one": true});

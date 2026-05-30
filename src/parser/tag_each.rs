@@ -121,7 +121,8 @@ fn parse_until_closing_each(input: &str) -> Result<(&str, &str), String> {
             }
             pos += 7;
         } else {
-            pos += 1;
+            // advance by a full UTF-8 codepoint so we never slice mid-character
+            pos += input[pos..].chars().next().map_or(1, char::len_utf8);
         }
     }
     Err("Unclosed <Each> tag - missing </Each>".to_string())
@@ -219,6 +220,15 @@ mod tests {
             let (remaining, inner) = parse_until_closing_each(input).unwrap();
             assert_eq!(inner, "some content");
             assert_eq!(remaining, "remaining");
+        }
+
+        #[test]
+        fn utf8_content() {
+            // multibyte chars in the body must not panic the byte scanner
+            let input = "Café 👋 naïve</Each>rest";
+            let (remaining, inner) = parse_until_closing_each(input).unwrap();
+            assert_eq!(inner, "Café 👋 naïve");
+            assert_eq!(remaining, "rest");
         }
 
         #[test]

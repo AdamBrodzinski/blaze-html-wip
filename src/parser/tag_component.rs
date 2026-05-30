@@ -141,7 +141,8 @@ fn parse_until_closing_component<'a>(
                 }
             }
         }
-        pos += 1;
+        // advance by a full UTF-8 codepoint so we never slice mid-character
+        pos += input[pos..].chars().next().map_or(1, char::len_utf8);
     }
 
     Err(format!("Unclosed <{name}> tag - missing </{name}>"))
@@ -210,6 +211,21 @@ mod tests {
             TemplateNode::Component(component) => {
                 assert_eq!(component.name, "Layout");
                 assert_eq!(component.children.len(), 2);
+            }
+            _ => panic!("Expected Component node"),
+        }
+    }
+
+    #[test]
+    fn parses_utf8_body() {
+        // multibyte chars in the body must not panic the byte scanner
+        let input = "<Box>Café 👋 naïve</Box>rest";
+        let (remaining, node) = parse_component(input).unwrap();
+        assert_eq!(remaining, "rest");
+        match node {
+            TemplateNode::Component(component) => {
+                assert_eq!(component.name, "Box");
+                assert_eq!(component.children, vec![TemplateNode::Text("Café 👋 naïve".into())]);
             }
             _ => panic!("Expected Component node"),
         }
