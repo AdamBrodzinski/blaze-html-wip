@@ -18,7 +18,11 @@
       "mcp__context7__query-docs",
       "Bash(cargo clippy:*)",
       "Bash(find:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(cargo build *)",
+      "Read(//tmp/**)",
+      "Bash(echo \"EXIT=$?\")"
     ],
     "deny": []
   },
