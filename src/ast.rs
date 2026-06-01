@@ -56,7 +56,7 @@ pub struct ComponentProp {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum PropValue {
-    Static(String),
+    Static(serde_json::Value), // pre-built at parse time, e.g. "Hello" in <Card title="Hello">
     VarPath(Vec<String>),
 }
 

@@ -1,60 +1,70 @@
+//! Variable scoping for template rendering.
+//!
+//! [`RenderContext`] resolves a dotted variable path like `@person.name` to a value
+//! in the data being rendered. It holds a *scope chain*: a stack of named bindings
+//! layered on top of the root JSON passed to the render function.
+//!
+//! Two constructs introduce a binding:
+//!
+//! - `<Each items="@people" as="person">` pushes `person` for each item it renders.
+//! - A component prop — `<Card title="...">` — pushes `title` while that component renders.
+//!
+//! Resolution walks the chain from the innermost (most recently pushed) binding
+//! outward, so an inner binding shadows an outer one of the same name. If no binding
+//! matches the first path segment, the path is resolved against the root data instead.
+//!
+//! ```text
+//! data:     { "site": "Blog", "posts": [ { "title": "Hi" } ] }
+//! template: <Each items="@posts" as="post">@post.title on @site</Each>
+//!
+//! while rendering an item the chain is:  [ post -> {"title": "Hi"} ]  over root { site, posts }
+//!   @post.title  ->  matches `post`, then ."title"        =>  "Hi"
+//!   @site        ->  no binding named `site`, hits root   =>  "Blog"
+//! ```
+//!
+//! Every name and value in the chain is borrowed (`&'a str` / `&'a Value`) from either
+//! the input JSON or the parsed (and cached) template AST, so resolving and iterating
+//! never clone the data or allocate a scope name.
+
 use serde_json::Value;
 
-/// A value bound into a scope layer.
-///
-/// `Borrowed` points into the `'a` data (root data or an `Each` element); it
-/// carries the data lifetime, so it can be handed back out of [`RenderContext`]
-/// without cloning. `Owned` holds a value the context owns (a static component
-/// prop) and can only be lent for as long as the context lives.
-pub(crate) enum ScopeValue<'a> {
-    Borrowed(&'a Value),
-    Owned(Value),
-}
-
-impl<'a> ScopeValue<'a> {
-    fn as_value(&self) -> &Value {
-        match self {
-            ScopeValue::Borrowed(value) => value,
-            ScopeValue::Owned(value) => value,
-        }
-    }
-
-    /// The underlying `&'a Value` when this layer borrows from the data, else
-    /// `None` for an owned layer.
-    fn borrowed(&self) -> Option<&'a Value> {
-        match self {
-            ScopeValue::Borrowed(value) => Some(value),
-            ScopeValue::Owned(_) => None,
-        }
-    }
-}
-
-/// Result of [`RenderContext::resolve_borrowed`].
-pub(crate) enum Resolved<'a> {
-    /// Value backed by the `'a` data — usable without cloning.
-    Ref(&'a Value),
-    /// Match landed in an owned scope (a static prop); the caller may clone via
-    /// [`RenderContext::resolve`] if it needs ownership.
-    Owned,
-}
-
-/// each layer in the variable scope chain
+/// A scope layer is created when entering a nested lexical scope in the template. The name
+/// comes from the <Each> 'as' attribute name OR any component attribute. These are the only two
+/// ways the stack changes. push_scope adds a binding when entering a nested component or each
+/// and then pop_scope removes it when leaving that component/each block.
 struct ScopeLayer<'a> {
-    name: String,          // <Each items="foo" name
-    value: ScopeValue<'a>, // borrowed data or an owned prop value
+    name: &'a str,    // binding name, e.g. <Each items="foo" as="item"> or a component prop
+    value: &'a Value, // borrowed from the input JSON OR the parsed AST
 }
 
 /// Render context with scope chain for variable resolution.
 /// The scope chain is searched from innermost (last) to outermost (first).
 /// The root_data is the fallback for top-level variables.
 ///
-/// Scope values are stored *by reference* into the `'a` data wherever possible
-/// (`Each` bindings, variable props), so rendering never deep-clones the input
-/// JSON. The only owned entries are static component props (small, literal
-/// strings from the template).
+/// Both scope names and scope values are borrows (`&'a str` / `&'a Value`) into the
+/// `'a` data or the parsed AST, so rendering never deep-clones the input JSON nor
+/// allocates a scope name on each push.
+/// ----
+///
+
+// Picture it like this. root_data is the floor; the stack grows upward as you enter nested scopes:
+//
+//             ┌──────────────────────────────┐
+//  innermost  │ [2] name="skill" value=◆ ────┼──► "Rust"      ← searched FIRST
+//             ├──────────────────────────────┤
+//             │ [1] name="post"  value=◆ ────┼──► {"title":..}
+//             ├──────────────────────────────┤
+//  outermost  │ [0] name="user"  value=◆ ────┼──► {"name":..}
+//             └──────────────────────────────┘
+//                                                   ↑ if nothing matches, fall through to:
+//             root_data ──────────────────────────► { the whole JSON object }
+//
+// The order matters: the most recently pushed layer is at the top, and resolution searches from the top down. That single rule gives us shadowing (inner names
+// beating outer names) for free — we'll see how.
+
 pub struct RenderContext<'a> {
-    root_data: &'a Value,
-    scope_stack: Vec<ScopeLayer<'a>>,
+    root_data: &'a Value,             // json data passed into render fn
+    scope_stack: Vec<ScopeLayer<'a>>, // each lexical scope,
 }
 
 impl<'a> RenderContext<'a> {
@@ -69,16 +79,10 @@ impl<'a> RenderContext<'a> {
         self.root_data
     }
 
-    pub fn push_scope(&mut self, name: &str, value: ScopeValue<'a>) {
-        self.scope_stack.push(ScopeLayer {
-            name: name.to_string(),
-            value,
-        });
-    }
-
-    /// Push a scope that borrows from the `'a` data (no clone).
-    pub fn push_scope_ref(&mut self, name: &str, value: &'a Value) {
-        self.push_scope(name, ScopeValue::Borrowed(value));
+    /// Push a scope binding. Both the name and value borrow from the `'a` data or
+    /// the parsed AST — no allocation.
+    pub fn push_scope(&mut self, name: &'a str, value: &'a Value) {
+        self.scope_stack.push(ScopeLayer { name, value });
     }
 
     pub fn pop_scope(&mut self) {
@@ -91,7 +95,12 @@ impl<'a> RenderContext<'a> {
     /// 1. Check if first segment matches a binding in any scope (innermost first)
     /// 2. If matched, resolve remaining segments from that value
     /// 3. If no match, resolve from root_data
-    pub fn resolve(&self, segments: &[String]) -> Result<&Value, String> {
+    ///
+    /// The result carries the data lifetime `'a` (not tied to `&self`), so callers
+    /// can hold the returned reference while continuing to push/pop scopes — this is
+    /// what lets `<Each>` keep the array borrow while iterating, and lets variable
+    /// props forward by reference, both without cloning.
+    pub fn resolve(&self, segments: &[String]) -> Result<&'a Value, String> {
         if segments.is_empty() {
             return Err("Empty variable path".to_string());
         }
@@ -101,51 +110,18 @@ impl<'a> RenderContext<'a> {
         // search scope stack from innermost to outermost
         for scope in self.scope_stack.iter().rev() {
             // "person" in ["person", "name"] or in ["person"]
-            if scope.name == *first_segment {
+            if scope.name == first_segment.as_str() {
                 // segments is ["person"], exact match for "person"
                 if segments.len() == 1 {
-                    return Ok(scope.value.as_value());
+                    return Ok(scope.value);
                 }
                 // segments is ["person", "name"], matched "person", pass remaining ["name"] to resolve remaining path
-                return resolve_path(scope.value.as_value(), &segments[1..]);
+                return resolve_path(scope.value, &segments[1..]);
             }
         }
 
         // not in any scope - resolve from root data
         resolve_path(self.root_data, segments)
-    }
-
-    /// Like [`resolve`](Self::resolve), but yields a reference carrying the data
-    /// lifetime `'a` when the value is backed by borrowed data (the root data or
-    /// an `Each` binding). When the match lands in an owned scope (a static prop)
-    /// it returns [`Resolved::Owned`] so the caller can clone only if it must.
-    ///
-    /// This is what lets `Each` hold onto the array while pushing per-item scopes,
-    /// and lets variable props forward by reference — both without cloning the
-    /// underlying JSON.
-    pub fn resolve_borrowed(&self, segments: &[String]) -> Result<Resolved<'a>, String> {
-        if segments.is_empty() {
-            return Err("Empty variable path".to_string());
-        }
-
-        let first_segment = &segments[0];
-
-        for scope in self.scope_stack.iter().rev() {
-            if scope.name == *first_segment {
-                let Some(value) = scope.value.borrowed() else {
-                    // matched an owned (static prop) layer
-                    return Ok(Resolved::Owned);
-                };
-                // `value` is `&'a Value`, so the result keeps the `'a` lifetime
-                // rather than borrowing `self`.
-                if segments.len() == 1 {
-                    return Ok(Resolved::Ref(value));
-                }
-                return resolve_path(value, &segments[1..]).map(Resolved::Ref);
-            }
-        }
-
-        resolve_path(self.root_data, segments).map(Resolved::Ref)
     }
 }
 
@@ -196,7 +172,7 @@ mod tests {
         let person = &data["people"][0];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope_ref("person", person);
+        ctx.push_scope("person", person);
 
         // Should resolve from scope
         let result = ctx.resolve(&["person".to_string(), "name".to_string()]);
@@ -209,7 +185,7 @@ mod tests {
         let nested = &data["person"];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope_ref("name", nested);
+        ctx.push_scope("name", nested);
 
         // "name" now refers to the scope binding, not root
         let result = ctx.resolve(&["name".to_string()]).unwrap();
@@ -228,8 +204,8 @@ mod tests {
         let inner = &data["items"][1];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope_ref("item", outer);
-        ctx.push_scope_ref("item", inner);
+        ctx.push_scope("item", outer);
+        ctx.push_scope("item", inner);
 
         // Inner scope wins
         let result = ctx
@@ -255,7 +231,7 @@ mod tests {
         let person = &data["people"][0];
 
         let mut ctx = RenderContext::new(&data);
-        ctx.push_scope_ref("person", person);
+        ctx.push_scope("person", person);
 
         // Can still access root data
         let result = ctx.resolve(&["page_name".to_string()]).unwrap();

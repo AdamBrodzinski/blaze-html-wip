@@ -97,7 +97,7 @@ fn parse_props(attrs: Vec<(&str, &str, char)>) -> Result<Vec<ComponentProp>, Str
             }
             PropValue::VarPath(stripped.split('.').map(String::from).collect())
         } else {
-            PropValue::Static(value.to_string())
+            PropValue::Static(serde_json::Value::String(value.to_string()))
         };
 
         props.push(ComponentProp {
@@ -225,7 +225,10 @@ mod tests {
         match node {
             TemplateNode::Component(component) => {
                 assert_eq!(component.name, "Box");
-                assert_eq!(component.children, vec![TemplateNode::Text("Café 👋 naïve".into())]);
+                assert_eq!(
+                    component.children,
+                    vec![TemplateNode::Text("Café 👋 naïve".into())]
+                );
             }
             _ => panic!("Expected Component node"),
         }

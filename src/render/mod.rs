@@ -11,7 +11,7 @@ use serde_json::Value;
 
 use crate::ast::{ComponentNode, ConditionMode, EachNode, IfNode, PropValue, TemplateNode};
 use crate::error::BlazeError;
-use context::{RenderContext, Resolved, ScopeValue};
+use context::RenderContext;
 
 pub(crate) struct ComponentTemplate {
     pub ast: Vec<TemplateNode>,
@@ -62,8 +62,8 @@ pub fn render_ast<'a, R: ComponentResolver>(
 }
 
 // separate render_nodes from render_ast for recursion
-fn render_nodes<'a, 'n, R: ComponentResolver>(
-    nodes: &'n [TemplateNode],
+fn render_nodes<'a, R: ComponentResolver>(
+    nodes: &'a [TemplateNode],
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
@@ -71,8 +71,8 @@ fn render_nodes<'a, 'n, R: ComponentResolver>(
     render_nodes_with_slot(nodes, ctx, buf, resolver, None)
 }
 
-fn render_nodes_with_slot<'a, 'n, R: ComponentResolver>(
-    nodes: &'n [TemplateNode],
+fn render_nodes_with_slot<'a, R: ComponentResolver>(
+    nodes: &'a [TemplateNode],
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
@@ -114,22 +114,21 @@ fn render_nodes_with_slot<'a, 'n, R: ComponentResolver>(
     Ok(())
 }
 
-fn render_each<'a, 'n, R: ComponentResolver>(
-    each: &'n EachNode,
+fn render_each<'a, R: ComponentResolver>(
+    each: &'a EachNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
     slot: Option<&str>,
 ) -> crate::error::Result<()> {
-    // Borrow the array with the data lifetime `'a` (not tied to `&ctx`), so we
-    // can iterate it while pushing per-item scopes back into `ctx` — no clone.
+    // `resolve` yields the data lifetime `'a` (not tied to `&ctx`), so we can
+    // iterate the array while pushing per-item scopes back into `ctx` without a clone
     let items: &'a [Value] = match ctx
-        .resolve_borrowed(&each.items_path)
+        .resolve(&each.items_path)
         .map_err(|msg| BlazeError::render(each.items_path.join("."), msg))?
     {
-        Resolved::Ref(Value::Array(arr)) => arr,
-        // a non-array, or a match in an owned (static string prop) scope
-        Resolved::Ref(_) | Resolved::Owned => {
+        Value::Array(arr) => arr,
+        _ => {
             return Err(BlazeError::render(
                 each.items_path.join("."),
                 "expected array for Each items",
@@ -138,7 +137,7 @@ fn render_each<'a, 'n, R: ComponentResolver>(
     };
 
     for item in items {
-        ctx.push_scope_ref(&each.item_binding, item);
+        ctx.push_scope(&each.item_binding, item);
         render_nodes_with_slot(&each.children, ctx, buf, resolver, slot)?;
         ctx.pop_scope();
     }
@@ -146,8 +145,8 @@ fn render_each<'a, 'n, R: ComponentResolver>(
     Ok(())
 }
 
-fn render_if<'a, 'n, R: ComponentResolver>(
-    if_node: &'n IfNode,
+fn render_if<'a, R: ComponentResolver>(
+    if_node: &'a IfNode,
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
@@ -190,40 +189,30 @@ fn render_if<'a, 'n, R: ComponentResolver>(
 }
 
 fn render_component<'a, R: ComponentResolver>(
-    component: &ComponentNode,
+    component: &'a ComponentNode,
     parent_ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
 ) -> crate::error::Result<()> {
     let template = resolver.resolve_component(&component.name)?;
+    // `component_ctx`'s lifetime is inferred at the (shorter) local template Arc
+    // lifetime; the longer-lived `&'a` root data and forwarded props coerce down.
     let mut component_ctx = RenderContext::new(parent_ctx.root_data());
     buf.reserve(template.template_len);
 
     for prop in &component.props {
         match &prop.value {
-            // Static props are literal strings from the template; the context
-            // owns a small `Value::String` for them.
-            PropValue::Static(value) => {
-                component_ctx
-                    .push_scope(&prop.name, ScopeValue::Owned(Value::String(value.clone())));
+            // Static props are pre-built `Value`s cached in the AST — borrow them.
+            PropValue::Static(value) => component_ctx.push_scope(&prop.name, value),
+            // Variable props forward a reference from the parent context. This
+            // borrows whatever the parent resolved (root data, an `Each` binding,
+            // or another component's static prop) without cloning.
+            PropValue::VarPath(segments) => {
+                let value = parent_ctx
+                    .resolve(segments)
+                    .map_err(|msg| BlazeError::render(segments.join("."), msg))?;
+                component_ctx.push_scope(&prop.name, value);
             }
-            PropValue::VarPath(segments) => match parent_ctx
-                .resolve_borrowed(segments)
-                .map_err(|msg| BlazeError::render(segments.join("."), msg))?
-            {
-                // Common case: the prop points at `'a` data — forward by
-                // reference, no clone.
-                Resolved::Ref(value) => component_ctx.push_scope_ref(&prop.name, value),
-                // Rare: forwarding an outer component's static prop. That value
-                // lives in the parent context, so clone the (small) value in.
-                Resolved::Owned => {
-                    let owned = parent_ctx
-                        .resolve(segments)
-                        .map_err(|msg| BlazeError::render(segments.join("."), msg))?
-                        .clone();
-                    component_ctx.push_scope(&prop.name, ScopeValue::Owned(owned));
-                }
-            },
         }
     }
 
@@ -235,7 +224,13 @@ fn render_component<'a, R: ComponentResolver>(
     // so unused children keep their original "not evaluated" behavior.
     let slot_html = if !component.children.is_empty() && contains_slot(&template.ast) {
         let mut slot_buf = String::new();
-        render_nodes_with_slot(&component.children, parent_ctx, &mut slot_buf, resolver, None)?;
+        render_nodes_with_slot(
+            &component.children,
+            parent_ctx,
+            &mut slot_buf,
+            resolver,
+            None,
+        )?;
         Some(slot_buf)
     } else {
         None
@@ -1020,7 +1015,8 @@ mod tests {
             // Template uses <Slot/> inside an If (contains_slot must recurse),
             // a VarPath prop (resolved from parent and cloned into the component
             // scope), and slot content that reads a parent-scope variable.
-            let resolver = resolver_with(&[("Card", r#"<If true="@show"><h2>@title</h2> <Slot/></If>"#)]);
+            let resolver =
+                resolver_with(&[("Card", r#"<If true="@show"><h2>@title</h2> <Slot/></If>"#)]);
             let page = r#"<Card show="@flag" title="Hi">body @name</Card>"#;
             let ast = parse_template_to_ast(page).unwrap();
             let data = json!({ "flag": true, "name": "Zoé" });
