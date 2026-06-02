@@ -110,7 +110,7 @@ impl<'a> RenderContext<'a> {
         // search scope stack from innermost to outermost
         for scope in self.scope_stack.iter().rev() {
             // "person" in ["person", "name"] or in ["person"]
-            if scope.name == first_segment.as_str() {
+            if scope.name == first_segment {
                 // segments is ["person"], exact match for "person"
                 if segments.len() == 1 {
                     return Ok(scope.value);
