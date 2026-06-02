@@ -217,20 +217,15 @@ fn render_component<'a, R: ComponentResolver>(
     }
 
     // Pre-render the slot content (the component's children) against the parent
-    // context. Slot content is evaluated in the caller's scope, which does not
-    // change while the component body renders, so rendering it once up front is
-    // equivalent to rendering it lazily at each <Slot/> — and needs no aliasing
-    // of the parent and component contexts. Skipped when the template has no slot
-    // so unused children keep their original "not evaluated" behavior.
-    let slot_html = if !component.children.is_empty() && contains_slot(&template.ast) {
+    // context. Slot content is evaluated in the caller's scope, which does not change
+    // while the component body renders, so rendering it once up front is equivalent to
+    // rendering it at each <Slot/>. We produce Some(..) whenever the template has a
+    // <Slot/> — even for empty children, which render to "" — so the slot site splices
+    // empty content instead of erroring as if used outside a component. None only when
+    // the template has no slot, so unused children keep their "not evaluated" behavior.
+    let slot_html = if contains_slot(&template.ast) {
         let mut slot_buf = String::new();
-        render_nodes_with_slot(
-            &component.children,
-            parent_ctx,
-            &mut slot_buf,
-            resolver,
-            None,
-        )?;
+        render_nodes_with_slot(&component.children, parent_ctx, &mut slot_buf, resolver, None)?;
         Some(slot_buf)
     } else {
         None
@@ -1013,7 +1008,7 @@ mod tests {
         #[test]
         fn slot_inside_if_with_varpath_prop() {
             // Template uses <Slot/> inside an If (contains_slot must recurse),
-            // a VarPath prop (resolved from parent and cloned into the component
+            // a VarPath prop (resolved from parent and forwarded into the component
             // scope), and slot content that reads a parent-scope variable.
             let resolver =
                 resolver_with(&[("Card", r#"<If true="@show"><h2>@title</h2> <Slot/></If>"#)]);
@@ -1022,6 +1017,71 @@ mod tests {
             let data = json!({ "flag": true, "name": "Zoé" });
             let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
             assert_eq!(html, "<h2>Hi</h2> body Zoé");
+        }
+
+        #[test]
+        fn empty_children_with_slot_template_renders_empty() {
+            // A component template with a <Slot/> but no children provided renders an
+            // empty slot rather than erroring with "slot tag used outside component".
+            let resolver = resolver_with(&[("Card", "<div><Slot/></div>")]);
+            let page = r#"<Card></Card>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({});
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            assert_eq!(html, "<div></div>");
+        }
+
+        #[test]
+        fn slot_content_is_pre_rendered_even_when_if_is_untaken() {
+            // Slot content is pre-rendered eagerly against the caller's context, so a
+            // broken variable in it surfaces an error even when the <Slot/> sits inside
+            // an untaken <If> and is never spliced. This is an accepted limitation of
+            // eager pre-rendering (errors are surfaced early rather than skipped).
+            let resolver = resolver_with(&[("Card", r#"<If true="@show"><Slot/></If>"#)]);
+            let page = r#"<Card show="@flag">@missing_var</Card>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "flag": false });
+            let err = render_ast(&ast, &data, page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("missing_var"), "unexpected error: {err}");
+        }
+
+        #[test]
+        fn slot_inside_taken_if_renders_content() {
+            // When the <If> is taken, the pre-rendered slot content is spliced in,
+            // resolved against the caller's scope.
+            let resolver = resolver_with(&[("Card", r#"<If true="@show">x<Slot/></If>"#)]);
+            let page = r#"<Card show="@flag">@name</Card>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "flag": true, "name": "Zoé" });
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            assert_eq!(html, "xZoé");
+        }
+
+        #[test]
+        fn slot_inside_empty_each_errors_eagerly() {
+            // A <Slot/> reachable through an <Each> is pre-rendered, so broken slot
+            // content surfaces an error even when the array is empty.
+            let resolver = resolver_with(&[("List", r#"<Each items="@xs" as="x"><Slot/></Each>"#)]);
+            let page = r#"<List>@missing_var</List>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "xs": [] });
+            let err = render_ast(&ast, &data, page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+            assert!(err.contains("missing_var"), "unexpected error: {err}");
+        }
+
+        #[test]
+        fn slot_inside_each_renders_for_every_item() {
+            // A <Slot/> inside an <Each> body is spliced for every item.
+            let resolver = resolver_with(&[("List", r#"<Each items="@xs" as="x"><Slot/></Each>"#)]);
+            let page = r#"<List>@label;</List>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "xs": [1, 2, 3], "label": "y" });
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            assert_eq!(html, "y;y;y;");
         }
     }
 }
