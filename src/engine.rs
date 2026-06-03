@@ -80,6 +80,7 @@ impl BlazeTemplateBuilder {
                 ast_nodes: RwLock::new(HashMap::new()),
                 components: RwLock::new(HashMap::new()),
                 component_ast: RwLock::new(HashMap::new()),
+                include_cache: RwLock::new(HashMap::new()),
             }),
         }
     }
@@ -108,6 +109,7 @@ struct BlazeTemplateInner {
     ast_nodes: RwLock<HashMap<String, (Vec<TemplateNode>, usize)>>,
     components: RwLock<HashMap<String, String>>,
     component_ast: RwLock<HashMap<String, Arc<ComponentTemplate>>>,
+    include_cache: RwLock<HashMap<String, Arc<String>>>,
 }
 
 impl std::fmt::Debug for BlazeTemplate {
@@ -263,6 +265,41 @@ impl BlazeTemplate {
         Ok(component)
     }
 
+    /// read the raw text from a file relative to the template root path. contents are cached in
+    /// AST (except dev mode).
+    fn get_include(&self, rel_path: &str) -> crate::error::Result<Arc<String>> {
+        let should_cache = !self.inner.dev && self.inner.cache_ast;
+
+        if should_cache {
+            match self.inner.include_cache.read() {
+                Ok(cache) => {
+                    if let Some(contents) = cache.get(rel_path) {
+                        return Ok(contents.clone());
+                    }
+                }
+                Err(_) => {
+                    if self.is_dev() {
+                        println!("Lock poisoned, clearing include cache");
+                    }
+                    self.clear_include_cache();
+                }
+            }
+        }
+
+        let full_path = self.inner.template_root_dir.join(rel_path);
+        let contents = Arc::new(
+            std::fs::read_to_string(&full_path)
+                .map_err(|e| BlazeError::include_io(&full_path, e))?,
+        );
+
+        if should_cache {
+            let mut cache = self.write_include_cache_or_clear();
+            cache.insert(rel_path.to_string(), contents.clone());
+        }
+
+        Ok(contents)
+    }
+
     fn set_cached_ast(&self, rel_page_path: &str, ast: Vec<TemplateNode>, len: usize) {
         let mut cache = self.write_cache_or_clear();
         cache.insert(rel_page_path.to_string(), (ast, len));
@@ -287,6 +324,23 @@ impl BlazeTemplate {
 
     fn clear_component_cache(&self) {
         self.write_component_cache_or_clear().clear();
+    }
+
+    fn clear_include_cache(&self) {
+        self.write_include_cache_or_clear().clear();
+    }
+
+    fn write_include_cache_or_clear(
+        &self,
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, Arc<String>>> {
+        match self.inner.include_cache.write() {
+            Ok(guard) => guard,
+            Err(poisoned) => {
+                let mut guard = poisoned.into_inner();
+                guard.clear();
+                guard
+            }
+        }
     }
 
     fn write_component_cache_or_clear(
@@ -353,6 +407,10 @@ impl ComponentResolver for BlazeTemplate {
     fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
         self.get_component_template(name)
     }
+
+    fn resolve_include(&self, path: &str) -> crate::error::Result<Arc<String>> {
+        self.get_include(path)
+    }
 }
 
 fn is_valid_component_name(name: &str) -> bool {
@@ -365,7 +423,10 @@ fn is_valid_component_name(name: &str) -> bool {
 }
 
 fn is_reserved_component_name(name: &str) -> bool {
-    matches!(name, "Each" | "If" | "Script" | "Style" | "Slot")
+    matches!(
+        name,
+        "Each" | "If" | "Include" | "Script" | "Style" | "Slot"
+    )
 }
 
 fn collect_missing_components(
@@ -466,6 +527,60 @@ mod tests {
             "#};
             assert_eq!(result, expected);
         }
+    }
+
+    #[test]
+    fn render_page_with_include_splices_raw_contents() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        let result = blaze
+            .render_page("pages/with_include.html", &json!({}))
+            .unwrap();
+
+        // raw CSS is spliced in
+        assert!(result.contains("body { color: blue; }"), "got: {result}");
+        // verbatim: @ and tag-like text inside the partial are NOT processed
+        assert!(result.contains("@notavar"), "got: {result}");
+        assert!(result.contains("<Style>"), "got: {result}");
+        // surrounding literal markup is preserved
+        assert!(result.starts_with("<style>"), "got: {result}");
+    }
+
+    #[test]
+    fn render_page_with_missing_include_errors() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        let err = blaze
+            .render_page("pages/with_missing_include.html", &json!({}))
+            .unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("reading include"), "got: {msg}");
+        assert!(msg.contains("does_not_exist.css"), "got: {msg}");
+    }
+
+    #[test]
+    fn include_contents_are_cached() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        blaze
+            .render_page("pages/with_include.html", &json!({}))
+            .unwrap();
+        assert_eq!(blaze.inner.include_cache.read().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn dev_mode_skips_include_cache() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .dev(true)
+            .build();
+        blaze
+            .render_page("pages/with_include.html", &json!({}))
+            .unwrap();
+        assert_eq!(blaze.inner.include_cache.read().unwrap().len(), 0);
     }
 
     #[test]

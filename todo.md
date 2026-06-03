@@ -25,16 +25,11 @@
 
 ## Future refactors
 
-- One small allocation remains that I did not touch: push_scope still does name.to_string() per scope entry (review's low-priority item). It's a tiny fixed-size string bounded by template structure, not data size — and removing it means borrowing the binding name from the AST, which re-entangles the node and data lifetimes.
+- can get_include and others be consolidated into one get_file ?
+- check that Include does not clash with component constant
+- extract render areas into separate files
+- extract html_escape to escape module
 
 ## dig into
 - slot handling/rendering
 
-
-## bug?
-// Pre-render the slot content (the component's children) against the parent
-// context. Slot content is evaluated in the caller's scope, which does not
-// change while the component body renders, so rendering it once up front is
-// equivalent to rendering it lazily at each <Slot/> — and needs no aliasing
-// of the parent and component contexts. Skipped when the template has no slot
-// so unused children keep their original "not evaluated" behavior.

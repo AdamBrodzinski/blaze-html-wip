@@ -27,6 +27,7 @@ fn find_special_start(input: &str) -> Option<usize> {
             let rest = &input[i..];
             if rest.starts_with("<Each")
                 || rest.starts_with("<If")
+                || rest.starts_with("<Include")
                 || rest.starts_with("<Script")
                 || rest.starts_with("<Style")
                 || rest.starts_with("<Slot")

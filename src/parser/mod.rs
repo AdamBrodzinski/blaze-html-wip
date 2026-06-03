@@ -8,6 +8,7 @@ mod tag_asset;
 mod tag_component;
 mod tag_each;
 mod tag_if;
+mod tag_include;
 mod text;
 mod variables;
 
@@ -21,10 +22,12 @@ use crate::error::ParseErrorDetails;
 
 pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
+        // blaze tags start with uppercase and must be checked *before* tag_component
         tag_each::parse_each,
         tag_if::parse_if,
         tag_asset::parse_script,
         tag_asset::parse_style,
+        tag_include::parse_include,
         tag_component::parse_component,
         tag_component::parse_slot,
         variables::parse_escape, // escape and raw syntax must be before parse_variable
@@ -64,6 +67,7 @@ mod tests {
     fn parse_ast() {
         let template = indoc! {r#"
             Before
+            <Include path="test_files/partials/view.css" />
             <Script path="test_files/asset.js" />
             <Style path="test_files/asset.css" />
             foo@@bar.com
@@ -75,6 +79,8 @@ mod tests {
             ast,
             [
                 TemplateNode::Text("Before\n".into()),
+                TemplateNode::Include("test_files/partials/view.css".to_string()),
+                TemplateNode::Text("\n".into()),
                 TemplateNode::Asset(AssetNode {
                     kind: AssetKind::Script,
                     path: "test_files/asset.js".to_string(),
@@ -91,6 +97,22 @@ mod tests {
                 TemplateNode::Text("bar.com\n".into()),
                 TemplateNode::Variable(vec!["foo".into()]),
                 TemplateNode::Text("\nAfter\n".into()),
+            ]
+        );
+    }
+
+    #[test]
+    fn parse_include_tag() {
+        // text splits at the <Include boundary, and it is parsed as an Include node
+        // (not a component) thanks to alt ordering.
+        let template = r#"x <Include path="a/b.css"/> y"#;
+        let ast = parse_template_to_ast(template).unwrap();
+        assert_eq!(
+            ast,
+            [
+                TemplateNode::Text("x ".into()),
+                TemplateNode::Include("a/b.css".into()),
+                TemplateNode::Text(" y".into()),
             ]
         );
     }

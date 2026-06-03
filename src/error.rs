@@ -32,6 +32,7 @@ pub struct IoErrorDetails {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum IoOperation {
     ReadTemplate,
+    ReadInclude,
     HashAsset,
 }
 
@@ -63,6 +64,7 @@ impl fmt::Display for BlazeError {
             BlazeError::Io(details) => {
                 let op = match details.operation {
                     IoOperation::ReadTemplate => "reading template",
+                    IoOperation::ReadInclude => "reading include",
                     IoOperation::HashAsset => "hashing asset",
                 };
                 write!(
@@ -115,6 +117,7 @@ impl fmt::Display for IoOperation {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             IoOperation::ReadTemplate => write!(f, "ReadTemplate"),
+            IoOperation::ReadInclude => write!(f, "ReadInclude"),
             IoOperation::HashAsset => write!(f, "HashAsset"),
         }
     }
@@ -258,6 +261,14 @@ impl BlazeError {
     pub fn template_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::ReadTemplate,
+            path: path.into(),
+            source,
+        })
+    }
+
+    pub fn include_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
+        BlazeError::Io(IoErrorDetails {
+            operation: IoOperation::ReadInclude,
             path: path.into(),
             source,
         })

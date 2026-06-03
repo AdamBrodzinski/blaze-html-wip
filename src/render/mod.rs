@@ -23,6 +23,10 @@ pub(crate) trait ComponentResolver {
         &self,
         name: &str,
     ) -> crate::error::Result<std::sync::Arc<ComponentTemplate>>;
+
+    /// Read the raw, unparsed contents of an include file (relative to the template
+    /// root) for a `<Include path="..."/>` tag.
+    fn resolve_include(&self, path: &str) -> crate::error::Result<std::sync::Arc<String>>;
 }
 
 fn html_escape(s: &str) -> Cow<'_, str> {
@@ -61,7 +65,9 @@ pub fn render_ast<'a, R: ComponentResolver>(
     Ok(buf)
 }
 
-// separate render_nodes from render_ast for recursion
+/// recursively walk down AST and convert each node to text, and then push
+/// to a string buffer. complex nodes will accept the buffer and will push
+/// inside the node render fn
 fn render_nodes<'a, R: ComponentResolver>(
     nodes: &'a [TemplateNode],
     ctx: &mut RenderContext<'a>,
@@ -71,6 +77,7 @@ fn render_nodes<'a, R: ComponentResolver>(
     render_nodes_with_slot(nodes, ctx, buf, resolver, None)
 }
 
+// TODO: rename to `do_render_nodes`, current name suggests this is slot only
 fn render_nodes_with_slot<'a, R: ComponentResolver>(
     nodes: &'a [TemplateNode],
     ctx: &mut RenderContext<'a>,
@@ -85,6 +92,11 @@ fn render_nodes_with_slot<'a, R: ComponentResolver>(
             TemplateNode::Each(each) => render_each(each, ctx, buf, resolver, slot)?,
             TemplateNode::Escaped => buf.push('@'),
             TemplateNode::If(if_node) => render_if(if_node, ctx, buf, resolver, slot)?,
+            TemplateNode::Include(path) => {
+                // Splice raw file contents verbatim: no @variable, tag, or HTML escaping.
+                let contents = resolver.resolve_include(path)?;
+                buf.push_str(&contents);
+            }
             TemplateNode::Slot => match slot {
                 // Slot content is pre-rendered against the caller's context in
                 // render_component, so here it is just spliced in as HTML.
@@ -225,7 +237,13 @@ fn render_component<'a, R: ComponentResolver>(
     // the template has no slot, so unused children keep their "not evaluated" behavior.
     let slot_html = if contains_slot(&template.ast) {
         let mut slot_buf = String::new();
-        render_nodes_with_slot(&component.children, parent_ctx, &mut slot_buf, resolver, None)?;
+        render_nodes_with_slot(
+            &component.children,
+            parent_ctx,
+            &mut slot_buf,
+            resolver,
+            None,
+        )?;
         Some(slot_buf)
     } else {
         None
@@ -310,6 +328,13 @@ mod tests {
     impl ComponentResolver for NoopResolver {
         fn resolve_component(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
             Err(BlazeError::render(name, "component not registered"))
+        }
+
+        fn resolve_include(&self, path: &str) -> crate::error::Result<Arc<String>> {
+            Err(BlazeError::render(
+                path,
+                "include not supported in this resolver",
+            ))
         }
     }
 
@@ -940,6 +965,13 @@ mod tests {
                     .get(name)
                     .cloned()
                     .ok_or_else(|| BlazeError::render(name, "component not registered"))
+            }
+
+            fn resolve_include(&self, path: &str) -> crate::error::Result<Arc<String>> {
+                Err(BlazeError::render(
+                    path,
+                    "include not supported in this resolver",
+                ))
             }
         }
 

@@ -8,6 +8,7 @@ pub enum TemplateNode {
     Each(EachNode),           // <Each items="@list" as="item">...</Each>
     Escaped,                  // @@ character that renders to @
     If(IfNode), // <If true="@var">...</If>, <If false="@var">...</If>, <If exists="@var">...</If>
+    Include(String), // <Include path="..."/> - splices raw file contents verbatim
     Slot,       // <Slot/> placeholder inside component templates
     Text(String), // anything that is not a template construct
     Variable(Vec<String>), // @foo - HTML-escaped output (safe by default)
