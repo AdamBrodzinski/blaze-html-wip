@@ -11,6 +11,7 @@ pub enum BlazeError {
     Parse(ParseErrorDetails),
     Io(IoErrorDetails),
     Render(RenderErrorDetails),
+    Serialize(serde_json::Error),
 }
 
 #[derive(Debug, Clone)]
@@ -82,6 +83,9 @@ impl fmt::Display for BlazeError {
                     details.variable, details.message
                 )
             }
+            BlazeError::Serialize(err) => {
+                write!(f, "Failed to serialize template data: {}", err)
+            }
         }
     }
 }
@@ -90,6 +94,7 @@ impl std::error::Error for BlazeError {
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
         match self {
             BlazeError::Io(details) => Some(&details.source),
+            BlazeError::Serialize(err) => Some(err),
             _ => None,
         }
     }
@@ -144,6 +149,12 @@ impl From<IoErrorDetails> for BlazeError {
 impl From<RenderErrorDetails> for BlazeError {
     fn from(details: RenderErrorDetails) -> Self {
         BlazeError::Render(details)
+    }
+}
+
+impl From<serde_json::Error> for BlazeError {
+    fn from(err: serde_json::Error) -> Self {
+        BlazeError::Serialize(err)
     }
 }
 

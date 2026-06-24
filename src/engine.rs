@@ -1,4 +1,4 @@
-use serde_json::Value;
+use serde::Serialize;
 use std::{
     collections::HashMap,
     fmt::Debug,
@@ -164,14 +164,22 @@ impl BlazeTemplate {
     }
 
     /// Render a template file to an HTML string.
-    pub fn render_page(&self, rel_page_path: &str, data: &Value) -> crate::error::Result<String> {
+    ///
+    /// Accepts any [`Serialize`] type, so view models can be passed directly
+    /// without converting to [`serde_json::Value`] first.
+    pub fn render_page(
+        &self,
+        rel_page_path: &str,
+        data: &impl Serialize,
+    ) -> crate::error::Result<String> {
+        let data = serde_json::to_value(data)?;
         let should_cache = !self.inner.dev && self.inner.cache_ast;
 
         if should_cache {
             match self.inner.ast_nodes.read() {
                 Ok(cache) => {
                     if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
-                        return render::render_ast(cached_ast, data, *template_len, self);
+                        return render::render_ast(cached_ast, &data, *template_len, self);
                     }
                 }
                 Err(_) => {
@@ -188,7 +196,7 @@ impl BlazeTemplate {
         let ast_nodes = parser::parse_template_to_ast(&page_template)?;
         let template_len = page_template.len();
 
-        let result = render::render_ast(&ast_nodes, data, template_len, self);
+        let result = render::render_ast(&ast_nodes, &data, template_len, self);
 
         if should_cache {
             self.set_cached_ast(rel_page_path, ast_nodes, template_len);
