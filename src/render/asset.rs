@@ -11,7 +11,7 @@ impl AssetNode {
         match self.kind {
             AssetKind::Script => {
                 buf.push_str(r#"<script src=""#);
-                buf.push_str(&self.path);
+                write_asset_url(&self.path, buf);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
                 for attr in &self.attrs {
@@ -26,7 +26,7 @@ impl AssetNode {
             }
             AssetKind::Style => {
                 buf.push_str(r#"<link rel="stylesheet" href=""#);
-                buf.push_str(&self.path);
+                write_asset_url(&self.path, buf);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
                 for attr in &self.attrs {
@@ -44,11 +44,18 @@ impl AssetNode {
     }
 }
 
+fn write_asset_url(path: &str, buf: &mut String) {
+    if !path.starts_with('/') {
+        buf.push('/');
+    }
+    buf.push_str(path);
+}
+
 #[cfg(feature = "cache-bust")]
 fn write_cache_param(path: &str, buf: &mut String) -> crate::error::Result<()> {
     use crate::error::BlazeError;
     let hash = hash_file(path).map_err(|e| BlazeError::asset_io(path, e))?;
-    buf.push('?');
+    buf.push_str("?v=");
     buf.push_str(&hash);
     Ok(())
 }
@@ -67,7 +74,53 @@ fn hash_file(path: &str) -> std::io::Result<String> {
 }
 
 #[cfg(test)]
-#[cfg(feature = "cache-bust")]
+mod url_tests {
+    use super::*;
+
+    #[test]
+    fn adds_leading_slash_to_relative_path() {
+        let mut buf = String::new();
+        write_asset_url("foo.js", &mut buf);
+        assert_eq!(buf, "/foo.js");
+    }
+
+    #[test]
+    fn preserves_root_relative_path() {
+        let mut buf = String::new();
+        write_asset_url("/foo.js", &mut buf);
+        assert_eq!(buf, "/foo.js");
+    }
+}
+
+#[cfg(all(test, not(feature = "cache-bust")))]
+mod no_cache_tests {
+    use super::*;
+
+    #[test]
+    fn renders_root_relative_urls_without_query_parameters() {
+        let script = AssetNode {
+            kind: AssetKind::Script,
+            path: "foo.js".to_string(),
+            attrs: vec![],
+        };
+        let style = AssetNode {
+            kind: AssetKind::Style,
+            path: "foo.css".to_string(),
+            attrs: vec![],
+        };
+        let mut buf = String::new();
+
+        script.write_html(&mut buf).unwrap();
+        style.write_html(&mut buf).unwrap();
+
+        assert_eq!(
+            buf,
+            r#"<script src="/foo.js"></script><link rel="stylesheet" href="/foo.css">"#
+        );
+    }
+}
+
+#[cfg(all(test, feature = "cache-bust"))]
 mod tests {
     use super::*;
     use crate::ast::Attr;
@@ -86,7 +139,7 @@ mod tests {
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(r#"<script src="test_files/asset.js?{JS_HASH}"></script>"#)
+            format!(r#"<script src="/test_files/asset.js?v={JS_HASH}"></script>"#)
         );
     }
 
@@ -112,7 +165,9 @@ mod tests {
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(r#"<script src="test_files/asset.js?{JS_HASH}" foo="bar" baz="qux"></script>"#)
+            format!(
+                r#"<script src="/test_files/asset.js?v={JS_HASH}" foo="bar" baz="qux"></script>"#
+            )
         );
     }
 
@@ -138,7 +193,9 @@ mod tests {
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(r#"<script src="test_files/asset.js?{JS_HASH}" foo='bar' baz="qux"></script>"#)
+            format!(
+                r#"<script src="/test_files/asset.js?v={JS_HASH}" foo='bar' baz="qux"></script>"#
+            )
         );
     }
 
@@ -153,7 +210,7 @@ mod tests {
         asset.write_html(&mut buf).unwrap();
         assert_eq!(
             buf,
-            format!(r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}">"#)
+            format!(r#"<link rel="stylesheet" href="/test_files/asset.css?v={CSS_HASH}">"#)
         );
     }
 
@@ -180,7 +237,7 @@ mod tests {
         assert_eq!(
             buf,
             format!(
-                r#"<link rel="stylesheet" href="test_files/asset.css?{CSS_HASH}" foo="bar" baz="qux">"#
+                r#"<link rel="stylesheet" href="/test_files/asset.css?v={CSS_HASH}" foo="bar" baz="qux">"#
             )
         );
     }

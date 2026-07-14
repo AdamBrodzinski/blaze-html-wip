@@ -529,8 +529,8 @@ mod tests {
                 .unwrap();
 
             let expected = formatdoc! {r#"
-                <script src="test_files/pages/test_engine_read.js?{JS_HASH}"></script>
-                <link rel="stylesheet" href="test_files/pages/test_engine_read.css?{CSS_HASH}">
+                <script src="/test_files/pages/test_engine_read.js?v={JS_HASH}"></script>
+                <link rel="stylesheet" href="/test_files/pages/test_engine_read.css?v={CSS_HASH}">
                 <div>Hello World</div>
             "#};
             assert_eq!(result, expected);

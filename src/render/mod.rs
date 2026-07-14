@@ -366,7 +366,7 @@ mod tests {
             let expected = format!(
                 indoc! {r#"
                   Before
-                  <script src="test_files/asset.js?{}"></script>
+                  <script src="/test_files/asset.js?v={}"></script>
                   Name: Jane
                   Email: foo@bar.com
                   <div onclick="alert('inner-quote')"></div>
