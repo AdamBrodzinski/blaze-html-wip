@@ -3,10 +3,10 @@ use nom::IResult;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TemplateNode {
-    Asset(AssetNode),         // script, stylesheet, preload, or icon with cache busting
+    Asset(AssetNode), // script, stylesheet, image, preload, or icon with cache busting
     Component(ComponentNode), // <MyComponent /> or <MyComponent>...</MyComponent>
-    Each(EachNode),           // <Each items="@list" as="item">...</Each>
-    Escaped,                  // @@ character that renders to @
+    Each(EachNode),   // <Each items="@list" as="item">...</Each>
+    Escaped,          // @@ character that renders to @
     If(IfNode), // <If true="@var">...</If>, <If false="@var">...</If>, <If exists="@var">...</If>
     Include(String), // <Include path="..."/> - splices raw file contents verbatim
     Slot,       // <Slot/> placeholder inside component templates
@@ -25,6 +25,7 @@ pub struct AssetNode {
 #[derive(Debug, PartialEq, Clone)]
 pub enum AssetKind {
     Icon,
+    Image,
     Preload,
     Script,
     Style,

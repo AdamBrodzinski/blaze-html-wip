@@ -26,6 +26,7 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
         tag_each::parse_each,
         tag_if::parse_if,
         tag_asset::parse_icon,
+        tag_asset::parse_image,
         tag_asset::parse_preload,
         tag_asset::parse_script,
         tag_asset::parse_style,

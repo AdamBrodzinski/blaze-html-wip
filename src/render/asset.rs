@@ -1,6 +1,6 @@
 //! Asset node rendering
 //!
-//! Renders AssetNode (Icon/Preload/Script/Style) to HTML output with cache busting
+//! Renders AssetNode (Icon/Image/Preload/Script/Style) to HTML output with cache busting
 
 use crate::ast::{AssetKind, AssetNode};
 
@@ -11,6 +11,14 @@ impl AssetNode {
         match self.kind {
             AssetKind::Icon => {
                 buf.push_str(r#"<link rel="icon" href=""#);
+                write_asset_url(&self.path, buf);
+                write_cache_param(&self.path, buf)?;
+                buf.push('"');
+                write_attrs(&self.attrs, buf);
+                buf.push('>');
+            }
+            AssetKind::Image => {
+                buf.push_str(r#"<img src=""#);
                 write_asset_url(&self.path, buf);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
@@ -121,6 +129,15 @@ mod no_cache_tests {
             path: "foo.css".to_string(),
             attrs: vec![],
         };
+        let image = AssetNode {
+            kind: AssetKind::Image,
+            path: "photo.webp".to_string(),
+            attrs: vec![crate::ast::Attr {
+                name: "alt".to_string(),
+                value: "Photo".to_string(),
+                quote: '"',
+            }],
+        };
         let preload = AssetNode {
             kind: AssetKind::Preload,
             path: "logo.webp".to_string(),
@@ -143,6 +160,7 @@ mod no_cache_tests {
 
         script.write_html(&mut buf).unwrap();
         style.write_html(&mut buf).unwrap();
+        image.write_html(&mut buf).unwrap();
         preload.write_html(&mut buf).unwrap();
         icon.write_html(&mut buf).unwrap();
 
@@ -151,6 +169,7 @@ mod no_cache_tests {
             concat!(
                 r#"<script src="/foo.js"></script>"#,
                 r#"<link rel="stylesheet" href="/foo.css">"#,
+                r#"<img src="/photo.webp" alt="Photo">"#,
                 r#"<link rel="preload" href="/logo.webp" as="image">"#,
                 r#"<link rel="icon" href="/favicon.png" sizes='32x32'>"#,
             )
@@ -220,6 +239,25 @@ mod tests {
                 ),
                 LOGO_HASH, ICON_32_HASH, ICON_16_HASH,
             )
+        );
+    }
+
+    #[test]
+    fn image_renders_with_hash_and_attrs() {
+        let asset = AssetNode {
+            kind: AssetKind::Image,
+            path: "test_files/assets/images/logo.webp".to_string(),
+            attrs: vec![Attr {
+                name: "alt".to_string(),
+                value: "Logo".to_string(),
+                quote: '\'',
+            }],
+        };
+        let mut buf = String::new();
+        asset.write_html(&mut buf).unwrap();
+        assert_eq!(
+            buf,
+            format!(r#"<img src="/test_files/assets/images/logo.webp?v={LOGO_HASH}" alt='Logo'>"#)
         );
     }
 

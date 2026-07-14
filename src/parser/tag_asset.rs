@@ -5,6 +5,7 @@
 //! - <Style path="static/foo.css" />
 //! - <Preload path="assets/logo.webp" as="image" />
 //! - <Icon path="assets/favicon.png" sizes="32x32" />
+//! - <Image path="assets/photo.webp" alt="Photo" />
 //!
 //! The path attribute is required. Any additional attributes are passed through 1:1
 //! to the rendered HTML tag.
@@ -23,6 +24,10 @@ use super::shared::attrs::parse_attr;
 
 pub fn parse_icon(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Icon", AssetKind::Icon)
+}
+
+pub fn parse_image(input: &str) -> VResult<'_, TemplateNode> {
+    parse_asset(input, "<Image", AssetKind::Image)
 }
 
 pub fn parse_preload(input: &str) -> VResult<'_, TemplateNode> {
@@ -114,6 +119,47 @@ mod tests {
                 attrs: vec![],
             })
         );
+    }
+
+    mod image_parser {
+        use super::*;
+
+        #[test]
+        fn parses_with_passthrough_attrs() {
+            let template =
+                r#"<Image path='assets/photo.webp' alt="Photo" width='640' loading="lazy" /> rest"#;
+            let (remaining, node) = parse_image(template).unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Image,
+                    path: "assets/photo.webp".to_string(),
+                    attrs: vec![
+                        Attr {
+                            name: "alt".to_string(),
+                            value: "Photo".to_string(),
+                            quote: '"',
+                        },
+                        Attr {
+                            name: "width".to_string(),
+                            value: "640".to_string(),
+                            quote: '\'',
+                        },
+                        Attr {
+                            name: "loading".to_string(),
+                            value: "lazy".to_string(),
+                            quote: '"',
+                        },
+                    ],
+                })
+            );
+            assert_eq!(remaining, " rest");
+        }
+
+        #[test]
+        fn requires_path() {
+            assert!(parse_image(r#"<Image alt="Photo" />"#).is_err());
+        }
     }
 
     mod icon_parser {

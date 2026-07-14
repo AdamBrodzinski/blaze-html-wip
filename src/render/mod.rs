@@ -383,6 +383,7 @@ mod tests {
         #[test]
         fn renders_image_preload_and_icons() {
             let template = indoc! {r#"
+                <Image path="test_files/assets/images/logo.webp" alt="Logo" loading='lazy' />
                 <Preload path="test_files/assets/images/logo.webp" as="image" />
                 <Icon path="test_files/assets/images/favicon-32x32.png" sizes="32x32" />
                 <Icon path="test_files/assets/images/favicon-16x16.png" sizes="16x16" />
@@ -391,11 +392,12 @@ mod tests {
             let html = render_template(template, &json!({})).unwrap();
             let expected = format!(
                 indoc! {r#"
+                    <img src="/test_files/assets/images/logo.webp?v={}" alt="Logo" loading='lazy'>
                     <link rel="preload" href="/test_files/assets/images/logo.webp?v={}" as="image">
                     <link rel="icon" href="/test_files/assets/images/favicon-32x32.png?v={}" sizes="32x32">
                     <link rel="icon" href="/test_files/assets/images/favicon-16x16.png?v={}" sizes="16x16">
                 "#},
-                LOGO_HASH, ICON_32_HASH, ICON_16_HASH,
+                LOGO_HASH, LOGO_HASH, ICON_32_HASH, ICON_16_HASH,
             );
 
             assert_eq!(html, expected);
