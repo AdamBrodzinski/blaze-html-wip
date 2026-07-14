@@ -25,6 +25,8 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
         // blaze tags start with uppercase and must be checked *before* tag_component
         tag_each::parse_each,
         tag_if::parse_if,
+        tag_asset::parse_icon,
+        tag_asset::parse_preload,
         tag_asset::parse_script,
         tag_asset::parse_style,
         tag_include::parse_include,
@@ -58,7 +60,7 @@ pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<Te
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ast::{AssetKind, AssetNode};
+    use crate::ast::{AssetKind, AssetNode, Attr};
     use indoc::indoc;
     use pretty_assertions::assert_eq;
 
@@ -70,6 +72,8 @@ mod tests {
             <Include path="test_files/partials/view.css" />
             <Script path="test_files/asset.js" />
             <Style path="test_files/asset.css" />
+            <Preload path="test_files/assets/images/logo.webp" as="image" />
+            <Icon path="test_files/assets/images/favicon-32x32.png" sizes='32x32' />
             foo@@bar.com
             @foo
             After
@@ -91,6 +95,26 @@ mod tests {
                     kind: AssetKind::Style,
                     path: "test_files/asset.css".to_string(),
                     attrs: vec![],
+                }),
+                TemplateNode::Text("\n".into()),
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Preload,
+                    path: "test_files/assets/images/logo.webp".to_string(),
+                    attrs: vec![Attr {
+                        name: "as".to_string(),
+                        value: "image".to_string(),
+                        quote: '"',
+                    }],
+                }),
+                TemplateNode::Text("\n".into()),
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Icon,
+                    path: "test_files/assets/images/favicon-32x32.png".to_string(),
+                    attrs: vec![Attr {
+                        name: "sizes".to_string(),
+                        value: "32x32".to_string(),
+                        quote: '\'',
+                    }],
                 }),
                 TemplateNode::Text("\nfoo".into()),
                 TemplateNode::Escaped,

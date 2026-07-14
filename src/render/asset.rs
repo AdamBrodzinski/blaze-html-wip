@@ -1,6 +1,6 @@
 //! Asset node rendering
 //!
-//! Renders AssetNode (Script/Style) to HTML output with cache busting
+//! Renders AssetNode (Icon/Preload/Script/Style) to HTML output with cache busting
 
 use crate::ast::{AssetKind, AssetNode};
 
@@ -9,19 +9,28 @@ impl AssetNode {
     /// This avoids allocations compared to returning a new String.
     pub fn write_html(&self, buf: &mut String) -> crate::error::Result<()> {
         match self.kind {
+            AssetKind::Icon => {
+                buf.push_str(r#"<link rel="icon" href=""#);
+                write_asset_url(&self.path, buf);
+                write_cache_param(&self.path, buf)?;
+                buf.push('"');
+                write_attrs(&self.attrs, buf);
+                buf.push('>');
+            }
+            AssetKind::Preload => {
+                buf.push_str(r#"<link rel="preload" href=""#);
+                write_asset_url(&self.path, buf);
+                write_cache_param(&self.path, buf)?;
+                buf.push('"');
+                write_attrs(&self.attrs, buf);
+                buf.push('>');
+            }
             AssetKind::Script => {
                 buf.push_str(r#"<script src=""#);
                 write_asset_url(&self.path, buf);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for attr in &self.attrs {
-                    buf.push(' ');
-                    buf.push_str(&attr.name);
-                    buf.push('=');
-                    buf.push(attr.quote);
-                    buf.push_str(&attr.value);
-                    buf.push(attr.quote);
-                }
+                write_attrs(&self.attrs, buf);
                 buf.push_str("></script>");
             }
             AssetKind::Style => {
@@ -29,18 +38,22 @@ impl AssetNode {
                 write_asset_url(&self.path, buf);
                 write_cache_param(&self.path, buf)?;
                 buf.push('"');
-                for attr in &self.attrs {
-                    buf.push(' ');
-                    buf.push_str(&attr.name);
-                    buf.push('=');
-                    buf.push(attr.quote);
-                    buf.push_str(&attr.value);
-                    buf.push(attr.quote);
-                }
+                write_attrs(&self.attrs, buf);
                 buf.push('>');
             }
         }
         Ok(())
+    }
+}
+
+fn write_attrs(attrs: &[crate::ast::Attr], buf: &mut String) {
+    for attr in attrs {
+        buf.push(' ');
+        buf.push_str(&attr.name);
+        buf.push('=');
+        buf.push(attr.quote);
+        buf.push_str(&attr.value);
+        buf.push(attr.quote);
     }
 }
 
@@ -108,14 +121,39 @@ mod no_cache_tests {
             path: "foo.css".to_string(),
             attrs: vec![],
         };
+        let preload = AssetNode {
+            kind: AssetKind::Preload,
+            path: "logo.webp".to_string(),
+            attrs: vec![crate::ast::Attr {
+                name: "as".to_string(),
+                value: "image".to_string(),
+                quote: '"',
+            }],
+        };
+        let icon = AssetNode {
+            kind: AssetKind::Icon,
+            path: "favicon.png".to_string(),
+            attrs: vec![crate::ast::Attr {
+                name: "sizes".to_string(),
+                value: "32x32".to_string(),
+                quote: '\'',
+            }],
+        };
         let mut buf = String::new();
 
         script.write_html(&mut buf).unwrap();
         style.write_html(&mut buf).unwrap();
+        preload.write_html(&mut buf).unwrap();
+        icon.write_html(&mut buf).unwrap();
 
         assert_eq!(
             buf,
-            r#"<script src="/foo.js"></script><link rel="stylesheet" href="/foo.css">"#
+            concat!(
+                r#"<script src="/foo.js"></script>"#,
+                r#"<link rel="stylesheet" href="/foo.css">"#,
+                r#"<link rel="preload" href="/logo.webp" as="image">"#,
+                r#"<link rel="icon" href="/favicon.png" sizes='32x32'>"#,
+            )
         );
     }
 }
@@ -127,6 +165,63 @@ mod tests {
 
     const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
     const CSS_HASH: &str = "a0ff2dc6b477abd5ca51c463f720d3ab";
+    const LOGO_HASH: &str = "1a3cdf7ab74ec558046d1ff5c1546b58";
+    const ICON_32_HASH: &str = "08ef72bf778f02a61ac931c19f6131a6";
+    const ICON_16_HASH: &str = "5f1c14b22987d18eab40e2ab4dcc94d1";
+
+    #[test]
+    fn preload_and_icons_render_with_hashes_and_attrs() {
+        let assets = [
+            AssetNode {
+                kind: AssetKind::Preload,
+                path: "test_files/assets/images/logo.webp".to_string(),
+                attrs: vec![Attr {
+                    name: "as".to_string(),
+                    value: "image".to_string(),
+                    quote: '"',
+                }],
+            },
+            AssetNode {
+                kind: AssetKind::Icon,
+                path: "test_files/assets/images/favicon-32x32.png".to_string(),
+                attrs: vec![Attr {
+                    name: "sizes".to_string(),
+                    value: "32x32".to_string(),
+                    quote: '"',
+                }],
+            },
+            AssetNode {
+                kind: AssetKind::Icon,
+                path: "test_files/assets/images/favicon-16x16.png".to_string(),
+                attrs: vec![Attr {
+                    name: "sizes".to_string(),
+                    value: "16x16".to_string(),
+                    quote: '\'',
+                }],
+            },
+        ];
+        let mut buf = String::new();
+
+        for asset in assets {
+            asset.write_html(&mut buf).unwrap();
+            buf.push('\n');
+        }
+
+        assert_eq!(
+            buf,
+            format!(
+                concat!(
+                    r#"<link rel="preload" href="/test_files/assets/images/logo.webp?v={}" as="image">"#,
+                    "\n",
+                    r#"<link rel="icon" href="/test_files/assets/images/favicon-32x32.png?v={}" sizes="32x32">"#,
+                    "\n",
+                    r#"<link rel="icon" href="/test_files/assets/images/favicon-16x16.png?v={}" sizes='16x16'>"#,
+                    "\n",
+                ),
+                LOGO_HASH, ICON_32_HASH, ICON_16_HASH,
+            )
+        );
+    }
 
     #[test]
     fn script_renders_with_hash() {

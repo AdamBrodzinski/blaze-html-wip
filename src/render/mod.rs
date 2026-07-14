@@ -344,6 +344,9 @@ mod tests {
         use pretty_assertions::assert_eq;
 
         const JS_HASH: &str = "a6f2ed7be4c8834436f238d65249b651";
+        const LOGO_HASH: &str = "1a3cdf7ab74ec558046d1ff5c1546b58";
+        const ICON_32_HASH: &str = "08ef72bf778f02a61ac931c19f6131a6";
+        const ICON_16_HASH: &str = "5f1c14b22987d18eab40e2ab4dcc94d1";
 
         // helper to render ast for testing
         fn render_template(page_template: &str, data: &Value) -> crate::error::Result<String> {
@@ -374,6 +377,27 @@ mod tests {
                 "#},
                 JS_HASH
             );
+            assert_eq!(html, expected);
+        }
+
+        #[test]
+        fn renders_image_preload_and_icons() {
+            let template = indoc! {r#"
+                <Preload path="test_files/assets/images/logo.webp" as="image" />
+                <Icon path="test_files/assets/images/favicon-32x32.png" sizes="32x32" />
+                <Icon path="test_files/assets/images/favicon-16x16.png" sizes="16x16" />
+            "#};
+
+            let html = render_template(template, &json!({})).unwrap();
+            let expected = format!(
+                indoc! {r#"
+                    <link rel="preload" href="/test_files/assets/images/logo.webp?v={}" as="image">
+                    <link rel="icon" href="/test_files/assets/images/favicon-32x32.png?v={}" sizes="32x32">
+                    <link rel="icon" href="/test_files/assets/images/favicon-16x16.png?v={}" sizes="16x16">
+                "#},
+                LOGO_HASH, ICON_32_HASH, ICON_16_HASH,
+            );
+
             assert_eq!(html, expected);
         }
     }

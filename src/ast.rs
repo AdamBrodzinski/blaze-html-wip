@@ -3,7 +3,7 @@ use nom::IResult;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum TemplateNode {
-    Asset(AssetNode),         // css/js/img script tag, appends cache busting query param
+    Asset(AssetNode),         // script, stylesheet, preload, or icon with cache busting
     Component(ComponentNode), // <MyComponent /> or <MyComponent>...</MyComponent>
     Each(EachNode),           // <Each items="@list" as="item">...</Each>
     Escaped,                  // @@ character that renders to @
@@ -24,6 +24,8 @@ pub struct AssetNode {
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum AssetKind {
+    Icon,
+    Preload,
     Script,
     Style,
 }

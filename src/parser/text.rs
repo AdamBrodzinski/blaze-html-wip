@@ -26,8 +26,10 @@ fn find_special_start(input: &str) -> Option<usize> {
         if bytes[i] == b'<' {
             let rest = &input[i..];
             if rest.starts_with("<Each")
+                || rest.starts_with("<Icon")
                 || rest.starts_with("<If")
                 || rest.starts_with("<Include")
+                || rest.starts_with("<Preload")
                 || rest.starts_with("<Script")
                 || rest.starts_with("<Style")
                 || rest.starts_with("<Slot")
