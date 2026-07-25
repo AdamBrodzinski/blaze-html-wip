@@ -101,17 +101,17 @@ project/
 ```
 
 ```rust
+use std::path::Path;
+
 use blaze_html::BlazeTemplate;
 use serde_json::json;
 
 fn main() -> blaze_html::Result<()> {
-    // setup the template engine on startup
+    // setup the template engine and register components/layouts on startup
     let blaze = BlazeTemplate::builder()
         .template_root_dir("templates")
+        .register_components([("Card", Path::new("components/card.html"))])?
         .build();
-
-    // register components/layouts once before rendering
-    blaze.register_component("Card", "components/card.html")?;
 
     let data = json!({
         "user": { "name": "You" },
@@ -168,12 +168,20 @@ A missing key is a render error, not an empty string. Use `<If exists>` when a v
 
 ### Components
 
-Register a component once, then use it as a tag anywhere:
+Register components on the builder, then use them as tags anywhere:
 
 ```rust
-blaze.register_component("Card", "components/card.html")?;
-blaze.register_component("Button", "components/button.html")?;
+use std::path::Path;
+
+let blaze = BlazeTemplate::builder()
+    .register_components([
+        ("Card", Path::new("components/card.html")),
+        ("Button", Path::new("components/button.html")),
+    ])?
+    .build();
 ```
+
+String paths are also accepted, although `Path::new` is preferred.
 
 ```html
 <Button label="Save"/>
@@ -331,6 +339,8 @@ for page in ["pages/home.html", "pages/about.html"] {
 `BlazeTemplate` is `Send + Sync + Clone`, so it drops straight into shared state. With [axum](https://github.com/tokio-rs/axum):
 
 ```rust
+use std::path::Path;
+
 use axum::{Router, extract::State, response::Html, routing::get};
 use blaze_html::BlazeTemplate;
 use serde_json::json;
@@ -339,10 +349,10 @@ use serde_json::json;
 async fn main() {
     let blaze = BlazeTemplate::builder()
         .template_root_dir("templates")
+        .register_components([("Card", Path::new("components/card.html"))])
+        .unwrap()
         .dev(cfg!(debug_assertions))
         .build();
-
-    blaze.register_component("Card", "components/card.html").unwrap();
     blaze.compile_page_template("pages/home.html").unwrap();
 
     let app = Router::new()

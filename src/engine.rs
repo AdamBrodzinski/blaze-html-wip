@@ -2,7 +2,7 @@ use serde::Serialize;
 use std::{
     collections::HashMap,
     fmt::Debug,
-    path::PathBuf,
+    path::{Path, PathBuf},
     sync::{Arc, RwLock},
 };
 
@@ -17,8 +17,14 @@ use crate::{
 ///
 /// # Example
 /// ```ignore
+/// use std::path::Path;
+///
 /// let blaze = BlazeTemplate::builder()
 ///     .template_root_dir("templates")
+///     .register_components([
+///         ("AppLayout", Path::new("layouts/app_layout.html")),
+///         ("EmptyLayout", Path::new("layouts/empty_layout.html")),
+///     ])?
 ///     .dev(true)
 ///     .build();
 /// ```
@@ -27,6 +33,7 @@ pub struct BlazeTemplateBuilder {
     dev: bool,
     cache_ast: bool,
     template_root_dir: Option<PathBuf>,
+    components: HashMap<String, PathBuf>,
 }
 
 impl Default for BlazeTemplateBuilder {
@@ -35,6 +42,7 @@ impl Default for BlazeTemplateBuilder {
             dev: false,
             cache_ast: true,
             template_root_dir: None,
+            components: HashMap::new(),
         }
     }
 }
@@ -52,6 +60,24 @@ impl BlazeTemplateBuilder {
     pub fn template_root_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.template_root_dir = Some(path.into());
         self
+    }
+
+    /// Register the components available to templates.
+    ///
+    /// Component paths are resolved relative to [`Self::template_root_dir`].
+    /// If a name occurs more than once, the last path replaces the earlier one.
+    pub fn register_components<I, N, P>(mut self, components: I) -> crate::error::Result<Self>
+    where
+        I: IntoIterator<Item = (N, P)>,
+        N: Into<String>,
+        P: Into<PathBuf>,
+    {
+        for (name, path) in components {
+            let name = name.into();
+            validate_component_name(&name)?;
+            self.components.insert(name, path.into());
+        }
+        Ok(self)
     }
 
     /// Enable dev mode, which disables template caching between requests.
@@ -78,7 +104,7 @@ impl BlazeTemplateBuilder {
                 cache_ast: self.cache_ast,
                 template_root_dir,
                 ast_nodes: RwLock::new(HashMap::new()),
-                components: RwLock::new(HashMap::new()),
+                components: self.components,
                 component_ast: RwLock::new(HashMap::new()),
                 include_cache: RwLock::new(HashMap::new()),
             }),
@@ -107,7 +133,7 @@ struct BlazeTemplateInner {
     cache_ast: bool,
     template_root_dir: PathBuf,
     ast_nodes: RwLock<HashMap<String, (Vec<TemplateNode>, usize)>>,
-    components: RwLock<HashMap<String, String>>,
+    components: HashMap<String, PathBuf>,
     component_ast: RwLock<HashMap<String, Arc<ComponentTemplate>>>,
     include_cache: RwLock<HashMap<String, Arc<String>>>,
 }
@@ -205,35 +231,10 @@ impl BlazeTemplate {
         result
     }
 
-    fn read_template(&self, rel_page_path: &str) -> crate::error::Result<String> {
+    fn read_template(&self, rel_page_path: impl AsRef<Path>) -> crate::error::Result<String> {
         let template_path = self.inner.template_root_dir.join(rel_page_path);
         std::fs::read_to_string(&template_path)
             .map_err(|e| BlazeError::template_io(&template_path, e))
-    }
-
-    pub fn register_component(
-        &self,
-        name: impl Into<String>,
-        rel_component_path: impl Into<String>,
-    ) -> crate::error::Result<&Self> {
-        let name = name.into();
-        let path = rel_component_path.into();
-
-        if !is_valid_component_name(&name) {
-            return Err(BlazeError::render(
-                name,
-                "component names must start with an uppercase letter and be alphanumeric",
-            ));
-        }
-
-        if is_reserved_component_name(&name) {
-            return Err(BlazeError::render(name, "component tag name is reserved"));
-        }
-
-        let mut registry = self.write_component_registry_or_clear();
-        registry.insert(name.clone(), path);
-        self.write_component_cache_or_clear().remove(&name);
-        Ok(self)
     }
 
     fn get_component_template(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
@@ -256,7 +257,7 @@ impl BlazeTemplate {
         }
 
         let rel_path = self.component_path(name)?;
-        let template = self.read_template(&rel_path)?;
+        let template = self.read_template(rel_path)?;
         let ast_nodes = parser::parse_template_to_ast(&template)?;
         self.validate_component_references(&ast_nodes)?;
 
@@ -317,17 +318,12 @@ impl BlazeTemplate {
         self.write_cache_or_clear().clear();
     }
 
-    fn component_path(&self, name: &str) -> crate::error::Result<String> {
-        match self.inner.components.read() {
-            Ok(registry) => registry
-                .get(name)
-                .cloned()
-                .ok_or_else(|| BlazeError::render(name, "component not registered")),
-            Err(_) => {
-                self.write_component_registry_or_clear().clear();
-                Err(BlazeError::render(name, "component registry unavailable"))
-            }
-        }
+    fn component_path(&self, name: &str) -> crate::error::Result<&Path> {
+        self.inner
+            .components
+            .get(name)
+            .map(PathBuf::as_path)
+            .ok_or_else(|| BlazeError::render(name, "component not registered"))
     }
 
     fn clear_component_cache(&self) {
@@ -364,33 +360,9 @@ impl BlazeTemplate {
         }
     }
 
-    fn write_component_registry_or_clear(
-        &self,
-    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, String>> {
-        match self.inner.components.write() {
-            Ok(guard) => guard,
-            Err(poisoned) => {
-                let mut guard = poisoned.into_inner();
-                guard.clear();
-                guard
-            }
-        }
-    }
-
     fn validate_component_references(&self, nodes: &[TemplateNode]) -> crate::error::Result<()> {
         let mut missing = Vec::new();
-        let registry = match self.inner.components.read() {
-            Ok(registry) => registry,
-            Err(_) => {
-                self.write_component_registry_or_clear().clear();
-                return Err(BlazeError::render(
-                    "component",
-                    "component registry unavailable",
-                ));
-            }
-        };
-
-        collect_missing_components(nodes, &registry, &mut missing);
+        collect_missing_components(nodes, &self.inner.components, &mut missing);
         if let Some(name) = missing.pop() {
             return Err(BlazeError::render(name, "component not registered"));
         }
@@ -421,6 +393,21 @@ impl ComponentResolver for BlazeTemplate {
     }
 }
 
+fn validate_component_name(name: &str) -> crate::error::Result<()> {
+    if !is_valid_component_name(name) {
+        return Err(BlazeError::render(
+            name,
+            "component names must start with an uppercase ASCII letter and contain only ASCII letters, numbers, or underscores",
+        ));
+    }
+
+    if is_reserved_component_name(name) {
+        return Err(BlazeError::render(name, "component tag name is reserved"));
+    }
+
+    Ok(())
+}
+
 fn is_valid_component_name(name: &str) -> bool {
     let mut chars = name.chars();
     match chars.next() {
@@ -439,7 +426,7 @@ fn is_reserved_component_name(name: &str) -> bool {
 
 fn collect_missing_components(
     nodes: &[TemplateNode],
-    registry: &HashMap<String, String>,
+    registry: &HashMap<String, PathBuf>,
     missing: &mut Vec<String>,
 ) {
     for node in nodes {
@@ -464,8 +451,6 @@ fn collect_missing_components(
 #[allow(clippy::bool_assert_comparison)]
 #[cfg(test)]
 mod tests {
-    use std::ptr::fn_addr_eq;
-
     use super::*;
     use serde_json::json;
 
@@ -488,6 +473,78 @@ mod tests {
             std::path::Path::new("customer/pages")
         );
         assert_eq!(blaze.is_dev(), true);
+    }
+
+    #[test]
+    fn builder_registers_multiple_components_from_paths() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .register_components([
+                ("Person", Path::new("components/Person.html")),
+                ("Button", Path::new("components/button.html")),
+            ])
+            .unwrap()
+            .build();
+
+        assert_eq!(
+            blaze.component_path("Person").unwrap(),
+            Path::new("components/Person.html")
+        );
+        assert_eq!(
+            blaze.component_path("Button").unwrap(),
+            Path::new("components/button.html")
+        );
+        blaze
+            .render_page(
+                "pages/bench_component.html",
+                &json!({ "data": { "age": 30 } }),
+            )
+            .unwrap();
+        blaze
+            .render_page("pages/bench_component_simple.html", &json!({}))
+            .unwrap();
+    }
+
+    #[test]
+    fn builder_component_registration_accepts_string_paths() {
+        let blaze = BlazeTemplate::builder()
+            .register_components([("Card", "components/card.html")])
+            .unwrap()
+            .build();
+
+        assert_eq!(
+            blaze.component_path("Card").unwrap(),
+            Path::new("components/card.html")
+        );
+    }
+
+    #[test]
+    fn builder_rejects_invalid_and_reserved_component_names() {
+        let invalid = BlazeTemplate::builder()
+            .register_components([("card", Path::new("components/card.html"))])
+            .unwrap_err();
+        assert!(invalid.to_string().contains("must start with an uppercase"));
+
+        let reserved = BlazeTemplate::builder()
+            .register_components([("Each", Path::new("components/each.html"))])
+            .unwrap_err();
+        assert!(reserved.to_string().contains("tag name is reserved"));
+    }
+
+    #[test]
+    fn later_duplicate_component_registration_wins() {
+        let blaze = BlazeTemplate::builder()
+            .register_components([
+                ("Card", Path::new("components/old.html")),
+                ("Card", Path::new("components/card.html")),
+            ])
+            .unwrap()
+            .build();
+
+        assert_eq!(
+            blaze.component_path("Card").unwrap(),
+            Path::new("components/card.html")
+        );
     }
 
     #[test]

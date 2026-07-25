@@ -1,3 +1,5 @@
+use std::path::Path;
+
 use blaze_html::BlazeTemplate;
 use criterion::{Criterion, black_box, criterion_group, criterion_main};
 use serde_json::json;
@@ -106,11 +108,9 @@ fn bench_each(c: &mut Criterion) {
 fn bench_component(c: &mut Criterion) {
     let blaze = BlazeTemplate::builder()
         .template_root_dir("test_files")
+        .register_components([("Person", Path::new("components/Person.html"))])
+        .unwrap()
         .build();
-
-    blaze
-        .register_component("Person", "components/Person.html")
-        .unwrap();
 
     blaze
         .compile_page_template("pages/bench_component.html")
@@ -126,11 +126,9 @@ fn bench_component(c: &mut Criterion) {
 fn bench_component_simple(c: &mut Criterion) {
     let blaze = BlazeTemplate::builder()
         .template_root_dir("test_files")
+        .register_components([("Button", Path::new("components/button.html"))])
+        .unwrap()
         .build();
-
-    blaze
-        .register_component("Button", "components/button.html")
-        .unwrap();
 
     blaze
         .compile_page_template("pages/bench_component_simple.html")
