@@ -7,7 +7,7 @@ fn main() {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_each.html")
+        .compile_page_templates(["pages/bench_each.html"])
         .unwrap();
 
     let data = json!({ "people": [{ "name": "Person 1"}, { "name": "Person 2"}] });

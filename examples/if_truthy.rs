@@ -7,7 +7,7 @@ fn main() {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_if_truthy.html")
+        .compile_page_templates(["pages/bench_if_truthy.html"])
         .unwrap();
 
     let data = json!({ "value": "hello world" });

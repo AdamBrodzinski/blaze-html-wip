@@ -326,12 +326,13 @@ let blaze = BlazeTemplate::builder()
 
 ### Warming the cache
 
-`compile_page_template` parses a template, validates that every component it references is registered, and caches the result — useful at startup so the first request doesn't pay for parsing, and so a broken template fails at boot instead of in production:
+`compile_page_templates` parses each template, validates that every component it references is registered, and caches successful results — useful at startup so the first request doesn't pay for parsing, and so a broken template fails at boot instead of in production. Pages are processed in order; processing stops at the first error, while pages compiled before it remain cached.
 
 ```rust
-for page in ["pages/home.html", "pages/about.html"] {
-    blaze.compile_page_template(page)?;
-}
+blaze.compile_page_templates([
+    "pages/home.html",
+    "pages/about.html",
+])?;
 ```
 
 ## Using with a web framework
@@ -353,7 +354,9 @@ async fn main() {
         .unwrap()
         .dev(cfg!(debug_assertions))
         .build();
-    blaze.compile_page_template("pages/home.html").unwrap();
+    blaze
+        .compile_page_templates(["pages/home.html"])
+        .unwrap();
 
     let app = Router::new()
         .route("/", get(home))

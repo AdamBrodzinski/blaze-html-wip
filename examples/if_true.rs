@@ -7,7 +7,7 @@ fn main() {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_if_true.html")
+        .compile_page_templates(["pages/bench_if_true.html"])
         .unwrap();
 
     let data = json!({ "is_true": true });

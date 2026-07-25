@@ -7,7 +7,7 @@ fn main() {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_plain.html")
+        .compile_page_templates(["pages/bench_plain.html"])
         .unwrap();
 
     let data = json!({});

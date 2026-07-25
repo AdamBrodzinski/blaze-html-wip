@@ -11,7 +11,7 @@ fn bench_plain_text(c: &mut Criterion) {
     let data = json!({});
 
     blaze
-        .compile_page_template("pages/bench_plain.html")
+        .compile_page_templates(["pages/bench_plain.html"])
         .unwrap();
 
     c.bench_function("plain_text", |b| {
@@ -25,7 +25,7 @@ fn bench_asset_precompiled(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_asset.html")
+        .compile_page_templates(["pages/bench_asset.html"])
         .unwrap();
 
     let data = json!({});
@@ -41,7 +41,7 @@ fn bench_variables(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_variables.html")
+        .compile_page_templates(["pages/bench_variables.html"])
         .unwrap();
 
     let data = json!({
@@ -63,7 +63,7 @@ fn bench_if_true(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_if_true.html")
+        .compile_page_templates(["pages/bench_if_true.html"])
         .unwrap();
 
     let data = json!({ "is_true": true });
@@ -79,7 +79,7 @@ fn bench_if_truthy(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_if_truthy.html")
+        .compile_page_templates(["pages/bench_if_truthy.html"])
         .unwrap();
 
     let data = json!({ "value": "hello world" });
@@ -95,7 +95,7 @@ fn bench_each(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_each.html")
+        .compile_page_templates(["pages/bench_each.html"])
         .unwrap();
 
     let data = json!({ "people": [{ "name": "Person 1"}, { "name": "Person 2"}] });
@@ -113,7 +113,7 @@ fn bench_component(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_component.html")
+        .compile_page_templates(["pages/bench_component.html"])
         .unwrap();
 
     let data = json!({ "data": { "age": 30 } });
@@ -131,7 +131,7 @@ fn bench_component_simple(c: &mut Criterion) {
         .build();
 
     blaze
-        .compile_page_template("pages/bench_component_simple.html")
+        .compile_page_templates(["pages/bench_component_simple.html"])
         .unwrap();
 
     let data = json!({});

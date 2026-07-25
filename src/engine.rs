@@ -132,7 +132,7 @@ struct BlazeTemplateInner {
     dev: bool,
     cache_ast: bool,
     template_root_dir: PathBuf,
-    ast_nodes: RwLock<HashMap<String, (Vec<TemplateNode>, usize)>>,
+    ast_nodes: RwLock<HashMap<PathBuf, (Vec<TemplateNode>, usize)>>,
     components: HashMap<String, PathBuf>,
     component_ast: RwLock<HashMap<String, Arc<ComponentTemplate>>>,
     include_cache: RwLock<HashMap<String, Arc<String>>>,
@@ -176,16 +176,29 @@ impl BlazeTemplate {
         &self.inner.template_root_dir
     }
 
-    /// Pre-compile a template and cache its AST for faster rendering.
+    /// Pre-compile page templates and cache their ASTs for faster rendering.
     ///
-    /// This is useful for warming up the cache at application startup.
-    pub fn compile_page_template(&self, rel_page_path: &str) -> crate::error::Result<()> {
-        let page_template = self.read_template(rel_page_path)?;
-        let ast_nodes = parser::parse_template_to_ast(&page_template)?;
-        self.validate_component_references(&ast_nodes)?;
-        if !self.inner.dev && self.inner.cache_ast {
-            self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
+    /// Templates are processed in iteration order. Each successful template is cached
+    /// immediately, and processing stops at the first error. This is useful for warming
+    /// up the cache at application startup.
+    pub fn compile_page_templates<I, P>(&self, rel_page_paths: I) -> crate::error::Result<()>
+    where
+        I: IntoIterator<Item = P>,
+        P: AsRef<Path>,
+    {
+        let should_cache = !self.inner.dev && self.inner.cache_ast;
+
+        for rel_page_path in rel_page_paths {
+            let rel_page_path = rel_page_path.as_ref();
+            let page_template = self.read_template(rel_page_path)?;
+            let ast_nodes = parser::parse_template_to_ast(&page_template)?;
+            self.validate_component_references(&ast_nodes)?;
+
+            if should_cache {
+                self.set_cached_ast(rel_page_path, ast_nodes, page_template.len());
+            }
         }
+
         Ok(())
     }
 
@@ -204,7 +217,7 @@ impl BlazeTemplate {
         if should_cache {
             match self.inner.ast_nodes.read() {
                 Ok(cache) => {
-                    if let Some((cached_ast, template_len)) = cache.get(rel_page_path) {
+                    if let Some((cached_ast, template_len)) = cache.get(Path::new(rel_page_path)) {
                         return render::render_ast(cached_ast, &data, *template_len, self);
                     }
                 }
@@ -225,7 +238,7 @@ impl BlazeTemplate {
         let result = render::render_ast(&ast_nodes, &data, template_len, self);
 
         if should_cache {
-            self.set_cached_ast(rel_page_path, ast_nodes, template_len);
+            self.set_cached_ast(Path::new(rel_page_path), ast_nodes, template_len);
         }
 
         result
@@ -309,9 +322,9 @@ impl BlazeTemplate {
         Ok(contents)
     }
 
-    fn set_cached_ast(&self, rel_page_path: &str, ast: Vec<TemplateNode>, len: usize) {
+    fn set_cached_ast(&self, rel_page_path: &Path, ast: Vec<TemplateNode>, len: usize) {
         let mut cache = self.write_cache_or_clear();
-        cache.insert(rel_page_path.to_string(), (ast, len));
+        cache.insert(rel_page_path.to_path_buf(), (ast, len));
     }
 
     fn clear_cache(&self) {
@@ -371,7 +384,7 @@ impl BlazeTemplate {
 
     fn write_cache_or_clear(
         &self,
-    ) -> std::sync::RwLockWriteGuard<'_, HashMap<String, (Vec<TemplateNode>, usize)>> {
+    ) -> std::sync::RwLockWriteGuard<'_, HashMap<PathBuf, (Vec<TemplateNode>, usize)>> {
         match self.inner.ast_nodes.write() {
             Ok(guard) => guard,
             Err(poisoned) => {
@@ -559,7 +572,7 @@ mod tests {
 
         // Compile on one, visible on the other
         blaze1
-            .compile_page_template("pages/test_engine_read.html")
+            .compile_page_templates([Path::new("pages/test_engine_read.html")])
             .unwrap();
 
         let cache_len = blaze2.inner.ast_nodes.read().unwrap().len();
@@ -649,16 +662,60 @@ mod tests {
     }
 
     #[test]
-    fn compile_page_caches_ast() {
+    fn compile_pages_caches_multiple_asts_from_paths() {
         let blaze = BlazeTemplate::builder()
             .template_root_dir("test_files")
             .build();
         blaze
-            .compile_page_template("pages/test_engine_read.html")
+            .compile_page_templates([
+                Path::new("pages/test_engine_read.html"),
+                Path::new("pages/bench_plain.html"),
+            ])
             .unwrap();
 
-        let ast_node_len = blaze.inner.ast_nodes.read().unwrap().len();
-        assert_eq!(ast_node_len, 1);
+        let cache = blaze.inner.ast_nodes.read().unwrap();
+        assert_eq!(cache.len(), 2);
+        assert!(cache.contains_key(Path::new("pages/test_engine_read.html")));
+        assert!(cache.contains_key(Path::new("pages/bench_plain.html")));
+    }
+
+    #[test]
+    fn compile_pages_accepts_string_paths() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        blaze
+            .compile_page_templates(["pages/test_engine_read.html"])
+            .unwrap();
+
+        assert!(
+            blaze
+                .inner
+                .ast_nodes
+                .read()
+                .unwrap()
+                .contains_key(Path::new("pages/test_engine_read.html"))
+        );
+    }
+
+    #[test]
+    fn compile_pages_keeps_successful_cache_entries_before_error() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+        let error = blaze
+            .compile_page_templates([
+                Path::new("pages/test_engine_read.html"),
+                Path::new("pages/does_not_exist.html"),
+                Path::new("pages/bench_plain.html"),
+            ])
+            .unwrap_err();
+
+        assert!(error.to_string().contains("does_not_exist.html"));
+        let cache = blaze.inner.ast_nodes.read().unwrap();
+        assert_eq!(cache.len(), 1);
+        assert!(cache.contains_key(Path::new("pages/test_engine_read.html")));
+        assert!(!cache.contains_key(Path::new("pages/bench_plain.html")));
     }
 
     #[test]
