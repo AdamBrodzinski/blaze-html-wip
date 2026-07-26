@@ -44,7 +44,13 @@ fn extract_path(attrs: Vec<(&str, &str, char)>, tag_name: &str) -> Result<String
     }
 
     // custom error trait converts Err(String) to a nom context error
-    path.ok_or_else(|| format!("path is a required attribute of {tag_name} />"))
+    match path {
+        Some(path) if path.is_empty() => {
+            Err(format!("path attribute of {tag_name} /> cannot be empty"))
+        }
+        Some(path) => Ok(path),
+        None => Err(format!("path is a required attribute of {tag_name} />")),
+    }
 }
 
 #[cfg(test)]
@@ -86,6 +92,17 @@ mod tests {
         let err = parse_include(template).unwrap_err();
         let msg = format!("{err:?}");
         assert!(msg.contains("path is a required attribute"), "got: {msg}");
+    }
+
+    #[test]
+    fn empty_path_errors() {
+        let template = r#"<Include path=""/>"#;
+        let err = parse_include(template).unwrap_err();
+        let msg = format!("{err:?}");
+        assert!(
+            msg.contains("path attribute of <Include /> cannot be empty"),
+            "got: {msg}"
+        );
     }
 
     #[test]

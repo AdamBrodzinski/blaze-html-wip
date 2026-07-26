@@ -85,6 +85,7 @@ fn separate_path_attr(
     }
 
     let src_path = match src_path {
+        Some("") => return Err(format!("path attribute of {tag_name} /> cannot be empty")),
         Some(path) => path.to_string(),
         // custom error trait will convert Err(String) to a nom context error
         None => return Err(format!("path is a required attribute of {tag_name} />")),
@@ -159,6 +160,12 @@ mod tests {
         #[test]
         fn requires_path() {
             assert!(parse_image(r#"<Image alt="Photo" />"#).is_err());
+        }
+
+        #[test]
+        fn rejects_empty_path() {
+            let err = parse_image(r#"<Image path="" alt="Photo" />"#).unwrap_err();
+            assert!(format!("{err:?}").contains("path attribute of <Image /> cannot be empty"));
         }
     }
 

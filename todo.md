@@ -1,9 +1,5 @@
 # TODO
-- handle inline css styles partial
-- handle cases for style tag, href-path
-- ? combine escaped/raw with an escaped bool flag
-- add test case for empty attr value ""
-- consider raw unescaped as @@!
+- X add test case for empty attr value ""
 - make data Option so caller doesnt need null data
 
 ## Nice to have

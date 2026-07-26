@@ -248,6 +248,21 @@ mod tests {
     }
 
     #[test]
+    fn parses_empty_static_prop() {
+        let input = r#"<Card title="" />"#;
+        let (_, node) = parse_component(input).unwrap();
+        match node {
+            TemplateNode::Component(component) => {
+                assert_eq!(
+                    component.props[0].value,
+                    PropValue::Static(serde_json::Value::String(String::new()))
+                );
+            }
+            _ => panic!("Expected Component node"),
+        }
+    }
+
+    #[test]
     fn parse_slot_tag() {
         let input = "<Slot/>rest";
         let (remaining, node) = parse_slot(input).unwrap();

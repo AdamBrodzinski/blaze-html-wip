@@ -1,7 +1,7 @@
 #![allow(unused)]
 use nom::Parser;
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_till1, take_while1};
+use nom::bytes::complete::{tag, take_till, take_while1};
 use nom::character::complete::char;
 use nom::combinator::cut;
 use nom::error::context;
@@ -21,14 +21,14 @@ pub mod attrs {
             alt((
                 preceded(
                     char('\''),
-                    cut(terminated(take_till1(|c| c == '\''), char('\''))),
+                    cut(terminated(take_till(|c| c == '\''), char('\''))),
                 )
                 .map(|v| ('\'', v)),
                 preceded(
                     char('"'),
                     cut(context(
                         "missing closing quote",
-                        terminated(take_till1(|c| c == '"'), char('"')),
+                        terminated(take_till(|c| c == '"'), char('"')),
                     )),
                 )
                 .map(|v| ('"', v)),
@@ -50,5 +50,26 @@ pub mod attrs {
     fn is_attr_name_char(c: char) -> bool {
         // todo should this start with alpha only?
         c.is_ascii_alphanumeric() || c == '-' || c == '_'
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::attrs::parse_attr;
+
+    #[test]
+    fn parses_empty_double_quoted_attr() {
+        let (remaining, (name, value, quote)) = parse_attr(r#"title="" rest"#).unwrap();
+
+        assert_eq!(remaining, " rest");
+        assert_eq!((name, value, quote), ("title", "", '"'));
+    }
+
+    #[test]
+    fn parses_empty_single_quoted_attr() {
+        let (remaining, (name, value, quote)) = parse_attr("title='' rest").unwrap();
+
+        assert_eq!(remaining, " rest");
+        assert_eq!((name, value, quote), ("title", "", '\''));
     }
 }
