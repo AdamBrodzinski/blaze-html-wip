@@ -29,6 +29,9 @@ pub(crate) trait ComponentResolver {
     fn resolve_include(&self, path: &str) -> crate::error::Result<std::sync::Arc<String>>;
 }
 
+/// The page itself is depth zero, so up to ten nested component renders are allowed.
+const MAX_COMPONENT_NESTING_DEPTH: usize = 10;
+
 fn html_escape(s: &str) -> Cow<'_, str> {
     let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
     match first_special_idx {
@@ -61,7 +64,7 @@ pub fn render_ast<'a, R: ComponentResolver>(
 ) -> crate::error::Result<String> {
     let mut ctx = RenderContext::new(data);
     let mut buf = String::with_capacity(template_len);
-    render_nodes(ast_nodes, &mut ctx, &mut buf, resolver)?;
+    render_nodes(ast_nodes, &mut ctx, &mut buf, resolver, 0)?;
     Ok(buf)
 }
 
@@ -73,8 +76,9 @@ fn render_nodes<'a, R: ComponentResolver>(
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
+    component_depth: usize,
 ) -> crate::error::Result<()> {
-    render_nodes_with_slot(nodes, ctx, buf, resolver, None)
+    render_nodes_with_slot(nodes, ctx, buf, resolver, component_depth, None)
 }
 
 // TODO: rename to `do_render_nodes`, current name suggests this is slot only
@@ -83,15 +87,22 @@ fn render_nodes_with_slot<'a, R: ComponentResolver>(
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
+    component_depth: usize,
     slot: Option<&str>,
 ) -> crate::error::Result<()> {
     for node in nodes {
         match node {
             TemplateNode::Asset(asset) => asset.write_html(buf)?,
-            TemplateNode::Component(component) => render_component(component, ctx, buf, resolver)?,
-            TemplateNode::Each(each) => render_each(each, ctx, buf, resolver, slot)?,
+            TemplateNode::Component(component) => {
+                render_component(component, ctx, buf, resolver, component_depth)?
+            }
+            TemplateNode::Each(each) => {
+                render_each(each, ctx, buf, resolver, component_depth, slot)?
+            }
             TemplateNode::Escaped => buf.push('@'),
-            TemplateNode::If(if_node) => render_if(if_node, ctx, buf, resolver, slot)?,
+            TemplateNode::If(if_node) => {
+                render_if(if_node, ctx, buf, resolver, component_depth, slot)?
+            }
             TemplateNode::Include(path) => {
                 // Splice raw file contents verbatim: no @variable, tag, or HTML escaping.
                 let contents = resolver.resolve_include(path)?;
@@ -131,6 +142,7 @@ fn render_each<'a, R: ComponentResolver>(
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
+    component_depth: usize,
     slot: Option<&str>,
 ) -> crate::error::Result<()> {
     // `resolve` yields the data lifetime `'a` (not tied to `&ctx`), so we can
@@ -150,7 +162,7 @@ fn render_each<'a, R: ComponentResolver>(
 
     for item in items {
         ctx.push_scope(&each.item_binding, item);
-        render_nodes_with_slot(&each.children, ctx, buf, resolver, slot)?;
+        render_nodes_with_slot(&each.children, ctx, buf, resolver, component_depth, slot)?;
         ctx.pop_scope();
     }
 
@@ -162,6 +174,7 @@ fn render_if<'a, R: ComponentResolver>(
     ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
+    component_depth: usize,
     slot: Option<&str>,
 ) -> crate::error::Result<()> {
     let condition = match if_node.mode {
@@ -194,7 +207,7 @@ fn render_if<'a, R: ComponentResolver>(
     };
 
     if should_render {
-        render_nodes_with_slot(&if_node.children, ctx, buf, resolver, slot)?;
+        render_nodes_with_slot(&if_node.children, ctx, buf, resolver, component_depth, slot)?;
     }
 
     Ok(())
@@ -205,7 +218,19 @@ fn render_component<'a, R: ComponentResolver>(
     parent_ctx: &mut RenderContext<'a>,
     buf: &mut String,
     resolver: &R,
+    component_depth: usize,
 ) -> crate::error::Result<()> {
+    if component_depth >= MAX_COMPONENT_NESTING_DEPTH {
+        return Err(BlazeError::render(
+            &component.name,
+            format!(
+                "maximum component nesting depth of {MAX_COMPONENT_NESTING_DEPTH} exceeded while rendering <{}>",
+                component.name
+            ),
+        ));
+    }
+
+    let nested_depth = component_depth + 1;
     let template = resolver.resolve_component(&component.name)?;
     // `component_ctx`'s lifetime is inferred at the (shorter) local template Arc
     // lifetime; the longer-lived `&'a` root data and forwarded props coerce down.
@@ -242,6 +267,7 @@ fn render_component<'a, R: ComponentResolver>(
             parent_ctx,
             &mut slot_buf,
             resolver,
+            nested_depth,
             None,
         )?;
         Some(slot_buf)
@@ -254,6 +280,7 @@ fn render_component<'a, R: ComponentResolver>(
         &mut component_ctx,
         buf,
         resolver,
+        nested_depth,
         slot_html.as_deref(),
     )
 }
@@ -1048,6 +1075,109 @@ mod tests {
                 );
             }
             TestResolver { components: map }
+        }
+
+        fn nested_node(depth: usize) -> Value {
+            assert!(depth > 0);
+            let mut node = json!({ "value": depth });
+            for value in (1..depth).rev() {
+                node = json!({ "value": value, "child": node });
+            }
+            node
+        }
+
+        #[test]
+        fn finite_recursive_component_allows_ten_levels() {
+            let resolver = resolver_with(&[(
+                "Node",
+                r#"@node.value;<If exists="@node.child"><Node node="@node.child"/></If>"#,
+            )]);
+            let page = r#"<Node node="@root"/>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "root": nested_node(10) });
+
+            let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+
+            assert_eq!(html, "1;2;3;4;5;6;7;8;9;10;");
+        }
+
+        #[test]
+        fn recursive_component_errors_on_the_eleventh_level() {
+            let resolver = resolver_with(&[(
+                "Node",
+                r#"@node.value;<If exists="@node.child"><Node node="@node.child"/></If>"#,
+            )]);
+            let page = r#"<Node node="@root"/>"#;
+            let ast = parse_template_to_ast(page).unwrap();
+            let data = json!({ "root": nested_node(11) });
+
+            let err = render_ast(&ast, &data, page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                err.contains("maximum component nesting depth of 10 exceeded"),
+                "unexpected error: {err}"
+            );
+            assert!(
+                err.contains("while rendering <Node>"),
+                "unexpected error: {err}"
+            );
+        }
+
+        #[test]
+        fn direct_component_cycle_hits_the_nesting_limit() {
+            let resolver = resolver_with(&[("Menu", "<Menu/>")]);
+            let page = "<Menu/>";
+            let ast = parse_template_to_ast(page).unwrap();
+
+            let err = render_ast(&ast, &json!({}), page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                err.contains(
+                    "maximum component nesting depth of 10 exceeded while rendering <Menu>"
+                ),
+                "unexpected error: {err}"
+            );
+        }
+
+        #[test]
+        fn indirect_component_cycle_hits_the_nesting_limit() {
+            let resolver = resolver_with(&[
+                ("Menu", "<nav><MenuItem/></nav>"),
+                ("MenuItem", "<div><Menu/></div>"),
+            ]);
+            let page = "<Menu/>";
+            let ast = parse_template_to_ast(page).unwrap();
+
+            let err = render_ast(&ast, &json!({}), page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                err.contains(
+                    "maximum component nesting depth of 10 exceeded while rendering <Menu>"
+                ),
+                "unexpected error: {err}"
+            );
+        }
+
+        #[test]
+        fn slot_components_count_toward_the_nesting_limit() {
+            let resolver = resolver_with(&[("Wrap", "<Slot/>")]);
+            let page = format!("{}x{}", "<Wrap>".repeat(11), "</Wrap>".repeat(11));
+            let ast = parse_template_to_ast(&page).unwrap();
+
+            let err = render_ast(&ast, &json!({}), page.len(), &resolver)
+                .unwrap_err()
+                .to_string();
+
+            assert!(
+                err.contains("maximum component nesting depth of 10 exceeded"),
+                "unexpected error: {err}"
+            );
         }
 
         #[test]
