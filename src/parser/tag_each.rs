@@ -19,7 +19,7 @@ pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = multispace1.parse(input)?;
 
     let (input, _) = context("items attribute", tag("items")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, items_value)) = cut(context("items value", parse_quoted_value)).parse(input)?;
 
     let items_path = parse_items_path(items_value).map_err(|e| make_error(input, e))?;
@@ -27,7 +27,7 @@ pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = multispace1.parse(input)?;
 
     let (input, _) = context("as attribute", tag("as")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, as_value)) = cut(context("as value", parse_quoted_value)).parse(input)?;
 
     // as attribute must be simple identifier, no dots
@@ -53,6 +53,13 @@ pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
             children,
         }),
     ))
+}
+
+fn parse_attr_equals(input: &str) -> VResult<'_, ()> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    Ok((input, ()))
 }
 
 fn parse_items_path(value: &str) -> Result<Vec<String>, String> {
@@ -329,6 +336,20 @@ mod tests {
         #[test]
         fn single_quotes() {
             let input = r#"<Each items='@items' as='item'>content</Each>"#;
+            let (_, node) = parse_each(input).unwrap();
+
+            match node {
+                TemplateNode::Each(each) => {
+                    assert_eq!(each.items_path, vec!["items"]);
+                    assert_eq!(each.item_binding, "item");
+                }
+                _ => panic!("Expected Each node"),
+            }
+        }
+
+        #[test]
+        fn whitespace_around_attribute_equals() {
+            let input = r#"<Each items = "@items" as = "item">@item</Each>"#;
             let (_, node) = parse_each(input).unwrap();
 
             match node {

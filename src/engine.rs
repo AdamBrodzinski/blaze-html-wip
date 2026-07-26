@@ -433,7 +433,7 @@ fn is_valid_component_name(name: &str) -> bool {
 fn is_reserved_component_name(name: &str) -> bool {
     matches!(
         name,
-        "Each" | "If" | "Include" | "Script" | "Style" | "Slot"
+        "Each" | "Icon" | "If" | "Image" | "Include" | "Preload" | "Script" | "Style" | "Slot"
     )
 }
 
@@ -538,10 +538,17 @@ mod tests {
             .unwrap_err();
         assert!(invalid.to_string().contains("must start with an uppercase"));
 
-        let reserved = BlazeTemplate::builder()
-            .register_components([("Each", Path::new("components/each.html"))])
-            .unwrap_err();
-        assert!(reserved.to_string().contains("tag name is reserved"));
+        for name in [
+            "Each", "Icon", "If", "Image", "Include", "Preload", "Script", "Style", "Slot",
+        ] {
+            let reserved = BlazeTemplate::builder()
+                .register_components([(name, Path::new("components/reserved.html"))])
+                .unwrap_err();
+            assert!(
+                reserved.to_string().contains("tag name is reserved"),
+                "{name} should be reserved"
+            );
+        }
     }
 
     #[test]

@@ -2,7 +2,7 @@
 use nom::Parser;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till, take_while1};
-use nom::character::complete::char;
+use nom::character::complete::{char, multispace0};
 use nom::combinator::cut;
 use nom::error::context;
 use nom::sequence::{delimited, preceded, separated_pair, terminated};
@@ -41,15 +41,19 @@ pub mod attrs {
     pub fn parse_attr(input: &str) -> VResult<'_, (&str, &str, char)> {
         context(
             "attribute",
-            separated_pair(take_while1(is_attr_name_char), tag("="), parse_quoted_value)
-                .map(|(name, (quote, value))| (name, value, quote)),
+            separated_pair(
+                parse_attr_name,
+                delimited(multispace0, tag("="), multispace0),
+                parse_quoted_value,
+            )
+            .map(|(name, (quote, value))| (name, value, quote)),
         )
         .parse(input)
     }
 
-    fn is_attr_name_char(c: char) -> bool {
-        // todo should this start with alpha only?
-        c.is_ascii_alphanumeric() || c == '-' || c == '_'
+    pub fn parse_attr_name(input: &str) -> VResult<'_, &str> {
+        take_while1(|c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+            .parse(input)
     }
 }
 
@@ -71,5 +75,21 @@ mod tests {
 
         assert_eq!(remaining, " rest");
         assert_eq!((name, value, quote), ("title", "", '\''));
+    }
+
+    #[test]
+    fn parses_whitespace_around_attr_equals() {
+        let (remaining, attr) = parse_attr(r#"title = "Hello" rest"#).unwrap();
+
+        assert_eq!(remaining, " rest");
+        assert_eq!(attr, ("title", "Hello", '"'));
+    }
+
+    #[test]
+    fn parses_namespaced_html_attr() {
+        let (remaining, attr) = parse_attr(r#"x-bind:class="active" rest"#).unwrap();
+
+        assert_eq!(remaining, " rest");
+        assert_eq!(attr, ("x-bind:class", "active", '"'));
     }
 }

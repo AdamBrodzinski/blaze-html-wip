@@ -11,8 +11,10 @@
 //! to the rendered HTML tag.
 
 use nom::Parser;
+use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::character::complete::{multispace0, multispace1};
+use nom::combinator::verify;
 use nom::error::context;
 use nom::multi::many0;
 use nom::sequence::preceded;
@@ -20,7 +22,7 @@ use nom::sequence::preceded;
 use crate::ast::{AssetKind, AssetNode, Attr, TemplateNode};
 
 use super::error::{VResult, make_error};
-use super::shared::attrs::parse_attr;
+use super::shared::attrs::{parse_attr, parse_attr_name};
 
 pub fn parse_icon(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Icon", AssetKind::Icon)
@@ -48,7 +50,8 @@ fn parse_asset<'a>(
     kind: AssetKind,
 ) -> VResult<'a, TemplateNode> {
     let (input, _) = tag(tag_name).parse(input)?;
-    let (input, attrs) = many0(preceded(multispace1, parse_attr)).parse(input)?;
+    let (input, attrs) =
+        many0(preceded(multispace1, alt((parse_attr, parse_boolean_attr)))).parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = context("closing tag", tag("/>")).parse(input)?;
 
@@ -63,6 +66,12 @@ fn parse_asset<'a>(
             attrs: other_attrs,
         }),
     ))
+}
+
+fn parse_boolean_attr(input: &str) -> VResult<'_, (&str, &str, char)> {
+    verify(parse_attr_name, |name: &str| name != "path")
+        .map(|name| (name, name, '"'))
+        .parse(input)
 }
 
 fn separate_path_attr(
@@ -334,6 +343,31 @@ mod tests {
                             name: "baz".to_string(),
                             value: "qux".to_string(),
                             quote: '"'
+                        },
+                    ],
+                })
+            );
+        }
+
+        #[test]
+        fn parses_boolean_attrs() {
+            let template = r#"<Script path="test_files/asset.js" defer async />"#;
+            let (_, node) = parse_script(template).unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Asset(AssetNode {
+                    kind: AssetKind::Script,
+                    path: "test_files/asset.js".to_string(),
+                    attrs: vec![
+                        Attr {
+                            name: "defer".to_string(),
+                            value: "defer".to_string(),
+                            quote: '"',
+                        },
+                        Attr {
+                            name: "async".to_string(),
+                            value: "async".to_string(),
+                            quote: '"',
                         },
                     ],
                 })

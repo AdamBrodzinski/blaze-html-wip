@@ -206,7 +206,7 @@ Props are either **static strings** (`title="Save"`) or **variable references** 
 Rules:
 
 - Names must start with an uppercase ASCII letter, followed by letters, digits, or `_`
-- `Each`, `If`, `Include`, `Script`, `Style`, and `Slot` are reserved
+- `Each`, `Icon`, `If`, `Image`, `Include`, `Preload`, `Script`, `Style`, and `Slot` are reserved
 - Components must be registered before the templates that use them are compiled or rendered — an unregistered tag is an error, not silent passthrough
 - Children are rendered in the **caller's** scope; the component body sees its props plus the root data, but not the caller's local bindings
 
@@ -276,7 +276,7 @@ renders as:
 <link rel="preload" href="/assets/hero.webp?v=…" as="image">
 ```
 
-`path` is required; every other attribute passes through to the output verbatim, preserving its original quote style. All attributes need a quoted value — bare boolean attributes (`defer`) are not parsed, so write `defer="defer"`. The hash is the first 32 hex characters of the file's BLAKE3 digest, so the URL changes exactly when the file's bytes do.
+`path` is required; every other attribute passes through to the output, preserving the original quote style of valued attributes. Bare boolean attributes are accepted and normalized (`defer` renders as `defer="defer"`). The hash is the first 32 hex characters of the file's BLAKE3 digest, so the URL changes exactly when the file's bytes do.
 
 > **Note:** asset `path` values are resolved relative to the **process working directory** (they mirror the public URL), not `template_root_dir`. A leading `/` is added if absent.
 

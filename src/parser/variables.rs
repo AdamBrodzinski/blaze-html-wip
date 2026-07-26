@@ -1,6 +1,8 @@
 use nom::Parser;
 use nom::bytes::complete::{tag, take_while1};
+use nom::combinator::recognize;
 use nom::error::context;
+use nom::multi::many0;
 use nom::sequence::preceded;
 
 use crate::ast::TemplateNode;
@@ -13,30 +15,30 @@ pub fn parse_escape(input: &str) -> VResult<'_, TemplateNode> {
 }
 
 pub fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
-    let (input, var_key) = context(
-        "variable",
-        preceded(
-            tag("@"),
-            take_while1(|c: char| c.is_alphanumeric() || c == '.' || c == '_'),
-        ),
-    )
-    .parse(input)?;
+    let (input, var_key) =
+        context("variable", preceded(tag("@"), parse_variable_path)).parse(input)?;
     let segments: Vec<String> = var_key.split('.').map(String::from).collect();
     Ok((input, TemplateNode::Variable(segments)))
 }
 
 /// Parses raw/unescaped variables with @! prefix (e.g., @!foo, @!user.html_content)
 pub fn parse_variable_raw(input: &str) -> VResult<'_, TemplateNode> {
-    let (input, var_key) = context(
-        "raw variable",
-        preceded(
-            tag("@!"),
-            take_while1(|c: char| c.is_alphanumeric() || c == '.' || c == '_'),
-        ),
-    )
-    .parse(input)?;
+    let (input, var_key) =
+        context("raw variable", preceded(tag("@!"), parse_variable_path)).parse(input)?;
     let segments: Vec<String> = var_key.split('.').map(String::from).collect();
     Ok((input, TemplateNode::VariableRaw(segments)))
+}
+
+fn parse_variable_path(input: &str) -> VResult<'_, &str> {
+    recognize((
+        take_while1(is_variable_segment_char),
+        many0(preceded(tag("."), take_while1(is_variable_segment_char))),
+    ))
+    .parse(input)
+}
+
+fn is_variable_segment_char(c: char) -> bool {
+    c.is_alphanumeric() || c == '_'
 }
 
 #[cfg(test)]
@@ -101,6 +103,16 @@ mod tests {
             );
             assert_eq!(remaining, " after");
         }
+
+        #[test]
+        fn leaves_sentence_period_after_variable() {
+            let (remaining, node) = parse_variable("@person.name.").unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::Variable(vec!["person".into(), "name".into()])
+            );
+            assert_eq!(remaining, ".");
+        }
     }
 
     mod variable_raw {
@@ -123,6 +135,16 @@ mod tests {
                 TemplateNode::VariableRaw(vec!["user".into(), "html_content".into()])
             );
             assert_eq!(remaining, " after");
+        }
+
+        #[test]
+        fn leaves_sentence_period_after_raw_variable() {
+            let (remaining, node) = parse_variable_raw("@!article.html.").unwrap();
+            assert_eq!(
+                node,
+                TemplateNode::VariableRaw(vec!["article".into(), "html".into()])
+            );
+            assert_eq!(remaining, ".");
         }
     }
 }

@@ -53,7 +53,7 @@ fn parse_condition_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<St
 
 fn parse_true_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
     let (input, _) = context("true attribute", tag("true")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, value)) = cut(context("true value", parse_quoted_value)).parse(input)?;
 
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
@@ -63,7 +63,7 @@ fn parse_true_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>
 
 fn parse_false_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
     let (input, _) = context("false attribute", tag("false")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, value)) = cut(context("false value", parse_quoted_value)).parse(input)?;
 
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
@@ -73,7 +73,7 @@ fn parse_false_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String
 
 fn parse_truthy_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
     let (input, _) = context("truthy attribute", tag("truthy")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, value)) = cut(context("truthy value", parse_quoted_value)).parse(input)?;
 
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
@@ -83,7 +83,7 @@ fn parse_truthy_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<Strin
 
 fn parse_falsy_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
     let (input, _) = context("falsy attribute", tag("falsy")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, value)) = cut(context("falsy value", parse_quoted_value)).parse(input)?;
 
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
@@ -93,12 +93,19 @@ fn parse_falsy_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String
 
 fn parse_exists_attr(input: &str) -> VResult<'_, (bool, ConditionMode, Vec<String>)> {
     let (input, _) = context("exists attribute", tag("exists")).parse(input)?;
-    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = parse_attr_equals(input)?;
     let (input, (_, value)) = cut(context("exists value", parse_quoted_value)).parse(input)?;
 
     let path = parse_condition_path(value).map_err(|e| make_error(input, e))?;
 
     Ok((input, (false, ConditionMode::Exists, path)))
+}
+
+fn parse_attr_equals(input: &str) -> VResult<'_, ()> {
+    let (input, _) = multispace0.parse(input)?;
+    let (input, _) = cut(tag("=")).parse(input)?;
+    let (input, _) = multispace0.parse(input)?;
+    Ok((input, ()))
 }
 
 // variable key inside attr quotes, ex: true="@foo.bar" -> ["foo", "bar"]
@@ -365,6 +372,19 @@ mod tests {
         #[test]
         fn single_quotes() {
             let input = r#"<If true='@active'>content</If>"#;
+            let (_, node) = parse_if(input).unwrap();
+
+            match node {
+                TemplateNode::If(if_node) => {
+                    assert_eq!(if_node.condition_path, vec!["active"]);
+                }
+                _ => panic!("Expected If node"),
+            }
+        }
+
+        #[test]
+        fn whitespace_around_attribute_equals() {
+            let input = r#"<If true = "@active">content</If>"#;
             let (_, node) = parse_if(input).unwrap();
 
             match node {

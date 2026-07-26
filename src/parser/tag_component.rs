@@ -12,8 +12,9 @@ use crate::ast::{ComponentNode, ComponentProp, PropValue, TemplateNode};
 use super::error::{BlazeParseError, VResult, make_error};
 use super::shared::attrs::parse_attr;
 
-// TODO: test this works
-const RESERVED_COMPONENTS: [&str; 5] = ["Each", "If", "Script", "Style", "Slot"];
+const RESERVED_COMPONENTS: [&str; 9] = [
+    "Each", "Icon", "If", "Image", "Include", "Preload", "Script", "Style", "Slot",
+];
 
 pub fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<").parse(input)?;
