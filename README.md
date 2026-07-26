@@ -46,6 +46,12 @@ let data = json!({
 let html = blaze.render_page("pages/home.html", &data)?;
 ```
 
+Pages that take no data use `render_page_static`, which skips the empty-data argument:
+
+```rust
+let html = blaze.render_page_static("pages/about.html")?;
+```
+
 ## Why
 
 Why add another templating language? I needed a server-side templating language that did not require a Rust compilation step every time a class changed, as Askama, RSX, and similar options do. The remaining runtime-evaluated languages felt like I was developing in the 90s, Handlebars and Jinja did not support component-level organization or data decoupling via props.

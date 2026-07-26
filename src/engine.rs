@@ -121,7 +121,10 @@ impl BlazeTemplateBuilder {
 ///     .dev(true)
 ///     .build();
 ///
-/// blaze.render_page("pages/about.html", &json!({}));
+/// blaze.render_page("pages/home.html", &json!({ "name": "Ada" }));
+///
+/// // Pages that take no data:
+/// blaze.render_page_static("pages/about.html");
 /// ```
 #[derive(Clone)]
 pub struct BlazeTemplate {
@@ -242,6 +245,16 @@ impl BlazeTemplate {
         }
 
         result
+    }
+
+    /// Render a template file that takes no data.
+    ///
+    /// Equivalent to [`Self::render_page`] with an empty data set. Templates that
+    /// reference a variable still error, since there is nothing to resolve against.
+    pub fn render_page_static(&self, rel_page_path: &str) -> crate::error::Result<String> {
+        // An empty object rather than `()`/null, so a template that does reference a
+        // variable reports "not found in object" instead of "non-object value".
+        self.render_page(rel_page_path, &serde_json::Map::new())
     }
 
     fn read_template(&self, rel_page_path: impl AsRef<Path>) -> crate::error::Result<String> {
@@ -514,7 +527,7 @@ mod tests {
             )
             .unwrap();
         blaze
-            .render_page("pages/bench_component_simple.html", &json!({}))
+            .render_page_static("pages/bench_component_simple.html")
             .unwrap();
     }
 
@@ -590,7 +603,6 @@ mod tests {
     mod render_with_hash {
         use super::*;
         use indoc::formatdoc;
-        use serde_json::json;
 
         const JS_HASH: &str = "44f4b32954b6da985de1cfd924eacdda";
         const CSS_HASH: &str = "5c7ead8de806c5ed42f44b22c63183ee";
@@ -600,9 +612,8 @@ mod tests {
             let blaze = BlazeTemplate::builder()
                 .template_root_dir("test_files")
                 .build();
-            let data = json!(());
             let result = blaze
-                .render_page("pages/test_engine_read.html", &data)
+                .render_page_static("pages/test_engine_read.html")
                 .unwrap();
 
             let expected = formatdoc! {r#"
@@ -619,9 +630,7 @@ mod tests {
         let blaze = BlazeTemplate::builder()
             .template_root_dir("test_files")
             .build();
-        let result = blaze
-            .render_page("pages/with_include.html", &json!({}))
-            .unwrap();
+        let result = blaze.render_page_static("pages/with_include.html").unwrap();
 
         // raw CSS is spliced in
         assert!(result.contains("body { color: blue; }"), "got: {result}");
@@ -638,7 +647,7 @@ mod tests {
             .template_root_dir("test_files")
             .build();
         let err = blaze
-            .render_page("pages/with_missing_include.html", &json!({}))
+            .render_page_static("pages/with_missing_include.html")
             .unwrap_err();
         let msg = err.to_string();
         assert!(msg.contains("reading include"), "got: {msg}");
@@ -650,9 +659,7 @@ mod tests {
         let blaze = BlazeTemplate::builder()
             .template_root_dir("test_files")
             .build();
-        blaze
-            .render_page("pages/with_include.html", &json!({}))
-            .unwrap();
+        blaze.render_page_static("pages/with_include.html").unwrap();
         assert_eq!(blaze.inner.include_cache.read().unwrap().len(), 1);
     }
 
@@ -662,9 +669,7 @@ mod tests {
             .template_root_dir("test_files")
             .dev(true)
             .build();
-        blaze
-            .render_page("pages/with_include.html", &json!({}))
-            .unwrap();
+        blaze.render_page_static("pages/with_include.html").unwrap();
         assert_eq!(blaze.inner.include_cache.read().unwrap().len(), 0);
     }
 
@@ -730,11 +735,9 @@ mod tests {
         let blaze = BlazeTemplate::builder()
             .template_root_dir("test_files")
             .build();
-        let data = json!(());
-
         // First render should populate cache
         blaze
-            .render_page("pages/test_engine_read.html", &data)
+            .render_page_static("pages/test_engine_read.html")
             .unwrap();
         assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 1);
     }
@@ -745,10 +748,9 @@ mod tests {
             .template_root_dir("test_files")
             .cache_ast(false)
             .build();
-        let data = json!(());
 
         blaze
-            .render_page("pages/test_engine_read.html", &data)
+            .render_page_static("pages/test_engine_read.html")
             .unwrap();
         assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
     }
@@ -759,11 +761,42 @@ mod tests {
             .template_root_dir("test_files")
             .dev(true)
             .build();
-        let data = json!(());
 
         blaze
-            .render_page("pages/test_engine_read.html", &data)
+            .render_page_static("pages/test_engine_read.html")
             .unwrap();
         assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn render_page_static_matches_render_page_with_empty_data() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+
+        let with_data = blaze
+            .render_page("pages/test_engine_read.html", &json!({}))
+            .unwrap();
+        let without_data = blaze
+            .render_page_static("pages/test_engine_read.html")
+            .unwrap();
+
+        assert_eq!(with_data, without_data);
+    }
+
+    #[test]
+    fn render_page_static_errors_on_template_with_variables() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .build();
+
+        let err = blaze
+            .render_page_static("pages/bench_variables.html")
+            .unwrap_err();
+
+        assert!(
+            err.to_string().to_lowercase().contains("not found"),
+            "got: {err}"
+        );
     }
 }

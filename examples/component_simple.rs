@@ -1,7 +1,6 @@
 use std::path::Path;
 
 use blaze_html::BlazeTemplate;
-use serde_json::json;
 
 fn main() {
     let blaze = BlazeTemplate::builder()
@@ -14,10 +13,8 @@ fn main() {
         .compile_page_templates(["pages/bench_component_simple.html"])
         .unwrap();
 
-    let data = json!({});
-
     let result = blaze
-        .render_page("pages/bench_component_simple.html", &data)
+        .render_page_static("pages/bench_component_simple.html")
         .unwrap();
 
     println!("{}", result);

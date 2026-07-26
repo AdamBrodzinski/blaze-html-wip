@@ -1,5 +1,4 @@
 use blaze_html::BlazeTemplate;
-use serde_json::json;
 
 fn main() {
     let blaze = BlazeTemplate::builder()
@@ -10,8 +9,7 @@ fn main() {
         .compile_page_templates(["pages/bench_plain.html"])
         .unwrap();
 
-    let data = json!({});
-    let result = blaze.render_page("pages/bench_plain.html", &data).unwrap();
+    let result = blaze.render_page_static("pages/bench_plain.html").unwrap();
 
     println!("{}", result);
 }
