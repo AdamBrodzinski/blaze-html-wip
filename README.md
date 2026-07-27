@@ -319,15 +319,13 @@ Names and values in the chain are borrowed from your JSON and the cached AST, so
 let blaze = BlazeTemplate::builder()
     .template_root_dir("templates")  // default: "." (cwd)
     .dev(cfg!(debug_assertions))     // default: false
-    .cache_ast(true)                 // default: true
     .build();
 ```
 
 | Option | Effect |
 | --- | --- |
 | `template_root_dir` | Root that page, component, and include paths resolve against |
-| `dev` | Disables all caching, so template edits show up on the next request |
-| `cache_ast` | Turns AST caching off independently of dev mode |
+| `dev` | Disables page, component, and include caching, so template edits show up on the next request |
 
 `BlazeTemplate` is `Clone` and shares one `Arc`'d cache across clones, so cloning it into request handlers is cheap and cache hits are shared.
 

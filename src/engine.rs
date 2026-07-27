@@ -28,23 +28,11 @@ use crate::{
 ///     .dev(true)
 ///     .build();
 /// ```
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct BlazeTemplateBuilder {
     dev: bool,
-    cache_ast: bool,
     template_root_dir: Option<PathBuf>,
     components: HashMap<String, PathBuf>,
-}
-
-impl Default for BlazeTemplateBuilder {
-    fn default() -> Self {
-        Self {
-            dev: false,
-            cache_ast: true,
-            template_root_dir: None,
-            components: HashMap::new(),
-        }
-    }
 }
 
 impl BlazeTemplateBuilder {
@@ -87,13 +75,6 @@ impl BlazeTemplateBuilder {
         self
     }
 
-    /// Enable or disable AST caching.
-    /// Default is `true`. When disabled, templates are parsed on every render.
-    pub fn cache_ast(mut self, enabled: bool) -> Self {
-        self.cache_ast = enabled;
-        self
-    }
-
     /// Build the `BlazeTemplate` instance.
     pub fn build(self) -> BlazeTemplate {
         let template_root_dir = self.template_root_dir.unwrap_or_else(|| PathBuf::from("."));
@@ -101,7 +82,6 @@ impl BlazeTemplateBuilder {
         BlazeTemplate {
             inner: Arc::new(BlazeTemplateInner {
                 dev: self.dev,
-                cache_ast: self.cache_ast,
                 template_root_dir,
                 ast_nodes: RwLock::new(HashMap::new()),
                 components: self.components,
@@ -133,7 +113,6 @@ pub struct BlazeTemplate {
 
 struct BlazeTemplateInner {
     dev: bool,
-    cache_ast: bool,
     template_root_dir: PathBuf,
     ast_nodes: RwLock<HashMap<PathBuf, (Vec<TemplateNode>, usize)>>,
     components: HashMap<String, PathBuf>,
@@ -189,7 +168,7 @@ impl BlazeTemplate {
         I: IntoIterator<Item = P>,
         P: AsRef<Path>,
     {
-        let should_cache = !self.inner.dev && self.inner.cache_ast;
+        let should_cache = !self.inner.dev;
 
         for rel_page_path in rel_page_paths {
             let rel_page_path = rel_page_path.as_ref();
@@ -215,7 +194,7 @@ impl BlazeTemplate {
         data: &impl Serialize,
     ) -> crate::error::Result<String> {
         let data = serde_json::to_value(data)?;
-        let should_cache = !self.inner.dev && self.inner.cache_ast;
+        let should_cache = !self.inner.dev;
 
         if should_cache {
             match self.inner.ast_nodes.read() {
@@ -264,7 +243,7 @@ impl BlazeTemplate {
     }
 
     fn get_component_template(&self, name: &str) -> crate::error::Result<Arc<ComponentTemplate>> {
-        let should_cache = !self.inner.dev && self.inner.cache_ast;
+        let should_cache = !self.inner.dev;
 
         if should_cache {
             match self.inner.component_ast.read() {
@@ -303,7 +282,7 @@ impl BlazeTemplate {
     /// read the raw text from a file relative to the template root path. contents are cached in
     /// AST (except dev mode).
     fn get_include(&self, rel_path: &str) -> crate::error::Result<Arc<String>> {
-        let should_cache = !self.inner.dev && self.inner.cache_ast;
+        let should_cache = !self.inner.dev;
 
         if should_cache {
             match self.inner.include_cache.read() {
@@ -743,19 +722,6 @@ mod tests {
     }
 
     #[test]
-    fn cache_ast_disabled_skips_caching() {
-        let blaze = BlazeTemplate::builder()
-            .template_root_dir("test_files")
-            .cache_ast(false)
-            .build();
-
-        blaze
-            .render_page_static("pages/test_engine_read.html")
-            .unwrap();
-        assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
-    }
-
-    #[test]
     fn dev_mode_skips_caching() {
         let blaze = BlazeTemplate::builder()
             .template_root_dir("test_files")
@@ -766,6 +732,21 @@ mod tests {
             .render_page_static("pages/test_engine_read.html")
             .unwrap();
         assert_eq!(blaze.inner.ast_nodes.read().unwrap().len(), 0);
+    }
+
+    #[test]
+    fn dev_mode_skips_component_caching() {
+        let blaze = BlazeTemplate::builder()
+            .template_root_dir("test_files")
+            .register_components([("Button", Path::new("components/button.html"))])
+            .unwrap()
+            .dev(true)
+            .build();
+
+        blaze
+            .render_page_static("pages/bench_component_simple.html")
+            .unwrap();
+        assert_eq!(blaze.inner.component_ast.read().unwrap().len(), 0);
     }
 
     #[test]
