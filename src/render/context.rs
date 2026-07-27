@@ -37,15 +37,14 @@ struct ScopeLayer<'a> {
     value: &'a Value, // borrowed from the input JSON OR the parsed AST
 }
 
-/// Render context with scope chain for variable resolution.
-/// The scope chain is searched from innermost (last) to outermost (first).
-/// The root_data is the fallback for top-level variables.
-///
-/// Both scope names and scope values are borrows (`&'a str` / `&'a Value`) into the
-/// `'a` data or the parsed AST, so rendering never deep-clones the input JSON nor
-/// allocates a scope name on each push.
-/// ----
-///
+// Render context with scope chain for variable resolution.
+// The scope chain is searched from innermost (last) to outermost (first).
+// The root_data is the fallback for top-level variables.
+//
+// Both scope names and scope values are borrows (`&'a str` / `&'a Value`) into the
+// `'a` data or the parsed AST, so rendering never deep-clones the input JSON nor
+// allocates a scope name on each push.
+//
 
 // Picture it like this. root_data is the floor; the stack grows upward as you enter nested scopes:
 //
@@ -62,30 +61,30 @@ struct ScopeLayer<'a> {
 // The order matters: the most recently pushed layer is at the top, and resolution searches from the top down. That single rule gives us shadowing (inner names
 // beating outer names) for free — we'll see how.
 
-pub struct RenderContext<'a> {
+pub(super) struct RenderContext<'a> {
     root_data: &'a Value,             // json data passed into render fn
     scope_stack: Vec<ScopeLayer<'a>>, // each lexical scope,
 }
 
 impl<'a> RenderContext<'a> {
-    pub fn new(root_data: &'a Value) -> Self {
+    pub(super) fn new(root_data: &'a Value) -> Self {
         Self {
             root_data,
             scope_stack: Vec::new(),
         }
     }
 
-    pub fn root_data(&self) -> &'a Value {
+    pub(super) fn root_data(&self) -> &'a Value {
         self.root_data
     }
 
     /// Push a scope binding. Both the name and value borrow from the `'a` data or
     /// the parsed AST — no allocation.
-    pub fn push_scope(&mut self, name: &'a str, value: &'a Value) {
+    pub(super) fn push_scope(&mut self, name: &'a str, value: &'a Value) {
         self.scope_stack.push(ScopeLayer { name, value });
     }
 
-    pub fn pop_scope(&mut self) {
+    pub(super) fn pop_scope(&mut self) {
         self.scope_stack.pop();
     }
 
@@ -100,7 +99,7 @@ impl<'a> RenderContext<'a> {
     /// can hold the returned reference while continuing to push/pop scopes — this is
     /// what lets `<Each>` keep the array borrow while iterating, and lets variable
     /// props forward by reference, both without cloning.
-    pub fn resolve(&self, segments: &[String]) -> Result<&'a Value, String> {
+    pub(super) fn resolve(&self, segments: &[String]) -> Result<&'a Value, String> {
         if segments.is_empty() {
             return Err("Empty variable path".to_string());
         }

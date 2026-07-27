@@ -10,7 +10,7 @@ use crate::ast::{ConditionMode, IfNode, TemplateNode};
 use super::error::{VResult, make_error};
 use super::shared::attrs::parse_quoted_value;
 
-pub fn parse_if(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_if(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<If").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
 
@@ -440,7 +440,7 @@ mod tests {
             match node {
                 TemplateNode::If(if_node) => {
                     assert_eq!(if_node.condition_path, vec!["show"]);
-                    assert!(if_node.children.len() >= 1);
+                    assert!(!if_node.children.is_empty());
                 }
                 _ => panic!("Expected If node"),
             }

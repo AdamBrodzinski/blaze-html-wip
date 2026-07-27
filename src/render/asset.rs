@@ -7,7 +7,7 @@ use crate::ast::{AssetKind, AssetNode};
 impl AssetNode {
     /// Writes the asset node HTML directly into the provided buffer.
     /// This avoids allocations compared to returning a new String.
-    pub fn write_html(&self, buf: &mut String) -> crate::error::Result<()> {
+    pub(super) fn write_html(&self, buf: &mut String) -> crate::error::Result<()> {
         match self.kind {
             AssetKind::Icon => {
                 buf.push_str(r#"<link rel="icon" href=""#);

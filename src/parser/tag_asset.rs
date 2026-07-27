@@ -1,11 +1,11 @@
 //! Asset tag nom parser
 //!
 //! Parses asset template tags:
-//! - <Script path="assets/foo.js" />
-//! - <Style path="static/foo.css" />
-//! - <Preload path="assets/logo.webp" as="image" />
-//! - <Icon path="assets/favicon.png" sizes="32x32" />
-//! - <Image path="assets/photo.webp" alt="Photo" />
+//! - `<Script path="assets/foo.js" />`
+//! - `<Style path="static/foo.css" />`
+//! - `<Preload path="assets/logo.webp" as="image" />`
+//! - `<Icon path="assets/favicon.png" sizes="32x32" />`
+//! - `<Image path="assets/photo.webp" alt="Photo" />`
 //!
 //! The path attribute is required. Any additional attributes are passed through 1:1
 //! to the rendered HTML tag.
@@ -24,23 +24,23 @@ use crate::ast::{AssetKind, AssetNode, Attr, TemplateNode};
 use super::error::{VResult, make_error};
 use super::shared::attrs::{parse_attr, parse_attr_name};
 
-pub fn parse_icon(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_icon(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Icon", AssetKind::Icon)
 }
 
-pub fn parse_image(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_image(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Image", AssetKind::Image)
 }
 
-pub fn parse_preload(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_preload(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Preload", AssetKind::Preload)
 }
 
-pub fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_script(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Script", AssetKind::Script)
 }
 
-pub fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_style(input: &str) -> VResult<'_, TemplateNode> {
     parse_asset(input, "<Style", AssetKind::Style)
 }
 

@@ -16,7 +16,7 @@ const RESERVED_COMPONENTS: [&str; 9] = [
     "Each", "Icon", "If", "Image", "Include", "Preload", "Script", "Style", "Slot",
 ];
 
-pub fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<").parse(input)?;
     let (input, name) = parse_component_name(input)?;
 
@@ -64,7 +64,7 @@ pub fn parse_component(input: &str) -> VResult<'_, TemplateNode> {
     ))
 }
 
-pub fn parse_slot(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_slot(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<Slot").parse(input)?;
     let (input, _) = multispace0.parse(input)?;
     let (input, _) = context("slot closing tag", tag("/>")).parse(input)?;
@@ -130,18 +130,16 @@ fn parse_until_closing_component<'a>(
                     }
                 }
             }
-        } else if input[pos..].starts_with('<') {
-            if is_tag_at(&input[pos + 1..], name) {
-                if let Some((is_self_closing, end_pos)) =
-                    parse_tag_end_position(&input[pos + 1..], name)
-                {
-                    if !is_self_closing {
-                        depth += 1;
-                    }
-                    pos += 1 + end_pos;
-                    continue;
-                }
+        } else if input[pos..].starts_with('<')
+            && is_tag_at(&input[pos + 1..], name)
+            && let Some((is_self_closing, end_pos)) =
+                parse_tag_end_position(&input[pos + 1..], name)
+        {
+            if !is_self_closing {
+                depth += 1;
             }
+            pos += 1 + end_pos;
+            continue;
         }
         // advance by a full UTF-8 codepoint so we never slice mid-character
         pos += input[pos..].chars().next().map_or(1, char::len_utf8);

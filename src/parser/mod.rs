@@ -2,7 +2,7 @@
 //!
 //! Parses template strings into an AST for rendering.
 
-pub mod error;
+pub(crate) mod error;
 mod shared;
 mod tag_asset;
 mod tag_component;
@@ -20,7 +20,9 @@ use crate::ast::TemplateNode;
 use crate::error::BlazeError;
 use crate::error::ParseErrorDetails;
 
-pub fn parse_template_to_ast(page_template: &str) -> crate::error::Result<Vec<TemplateNode>> {
+pub(crate) fn parse_template_to_ast(
+    page_template: &str,
+) -> crate::error::Result<Vec<TemplateNode>> {
     let (remaining, nodes) = many0(alt((
         // blaze tags start with uppercase and must be checked *before* tag_component
         tag_each::parse_each,

@@ -7,6 +7,7 @@ use crate::parser::error::{BlazeParseError, BlazeParseErrorKind};
 pub type Result<T> = std::result::Result<T, BlazeError>;
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum BlazeError {
     Parse(ParseErrorDetails),
     Io(IoErrorDetails),
@@ -15,6 +16,7 @@ pub enum BlazeError {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct ParseErrorDetails {
     pub message: String,
     pub line: usize,
@@ -24,6 +26,7 @@ pub struct ParseErrorDetails {
 }
 
 #[derive(Debug)]
+#[non_exhaustive]
 pub struct IoErrorDetails {
     pub operation: IoOperation,
     pub path: PathBuf,
@@ -31,6 +34,7 @@ pub struct IoErrorDetails {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[non_exhaustive]
 pub enum IoOperation {
     ReadTemplate,
     ReadInclude,
@@ -38,6 +42,7 @@ pub enum IoOperation {
 }
 
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub struct RenderErrorDetails {
     pub variable: String,
     pub message: String,
@@ -159,18 +164,13 @@ impl From<serde_json::Error> for BlazeError {
 }
 
 impl ParseErrorDetails {
-    pub fn from_blaze_parse_error(input: &str, err: BlazeParseError<&str>) -> Self {
-        // Find primary error: External > Char > Context > Nom
+    pub(crate) fn from_blaze_parse_error(input: &str, err: BlazeParseError<&str>) -> Self {
+        // Find primary error: External > Context > Nom
         let primary = err
             .errors
             .iter()
             // primary error
             .find(|(_, k)| matches!(k, BlazeParseErrorKind::External(_)))
-            .or_else(|| {
-                err.errors
-                    .iter()
-                    .find(|(_, k)| matches!(k, BlazeParseErrorKind::Char(_)))
-            })
             .or_else(|| {
                 err.errors
                     .iter()
@@ -192,17 +192,6 @@ impl ParseErrorDetails {
 
                 let message = match kind {
                     BlazeParseErrorKind::External(msg) => msg.clone(),
-                    BlazeParseErrorKind::Char(c) => {
-                        if substring.is_empty() {
-                            format!("expected '{}', found end of input", c)
-                        } else {
-                            format!(
-                                "expected '{}', found '{}'",
-                                c,
-                                substring.chars().next().unwrap_or('?')
-                            )
-                        }
-                    }
                     BlazeParseErrorKind::Context(ctx) => (*ctx).to_string(),
                     BlazeParseErrorKind::Nom(ek) => format!("{:?}", ek),
                 };
@@ -232,7 +221,7 @@ impl ParseErrorDetails {
         }
     }
 
-    pub fn at_position(input: &str, position: usize, message: impl Into<String>) -> Self {
+    pub(crate) fn at_position(input: &str, position: usize, message: impl Into<String>) -> Self {
         let offset = position.min(input.len());
         let line = input[..offset].chars().filter(|&c| c == '\n').count() + 1;
         let line_start = input[..offset].rfind('\n').map(|p| p + 1).unwrap_or(0);
@@ -254,7 +243,7 @@ impl ParseErrorDetails {
 }
 
 impl BlazeError {
-    pub fn from_nom_error(input: &str, err: nom::Err<BlazeParseError<&str>>) -> Self {
+    pub(crate) fn from_nom_error(input: &str, err: nom::Err<BlazeParseError<&str>>) -> Self {
         match err {
             nom::Err::Incomplete(_) => BlazeError::Parse(ParseErrorDetails {
                 message: "Incomplete input".to_string(),
@@ -269,7 +258,7 @@ impl BlazeError {
         }
     }
 
-    pub fn template_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
+    pub(crate) fn template_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::ReadTemplate,
             path: path.into(),
@@ -277,7 +266,7 @@ impl BlazeError {
         })
     }
 
-    pub fn include_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
+    pub(crate) fn include_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::ReadInclude,
             path: path.into(),
@@ -285,7 +274,8 @@ impl BlazeError {
         })
     }
 
-    pub fn asset_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
+    #[cfg(feature = "cache-bust")]
+    pub(crate) fn asset_io(path: impl Into<PathBuf>, source: io::Error) -> Self {
         BlazeError::Io(IoErrorDetails {
             operation: IoOperation::HashAsset,
             path: path.into(),
@@ -293,7 +283,7 @@ impl BlazeError {
         })
     }
 
-    pub fn render(variable: impl Into<String>, message: impl Into<String>) -> Self {
+    pub(crate) fn render(variable: impl Into<String>, message: impl Into<String>) -> Self {
         BlazeError::Render(RenderErrorDetails {
             variable: variable.into(),
             message: message.into(),

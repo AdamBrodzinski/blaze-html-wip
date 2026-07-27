@@ -1,4 +1,3 @@
-#![allow(unused)]
 use nom::Parser;
 use nom::branch::alt;
 use nom::bytes::complete::{tag, take_till, take_while1};
@@ -9,13 +8,13 @@ use nom::sequence::{delimited, preceded, separated_pair, terminated};
 
 use super::error::VResult;
 
-pub mod attrs {
+pub(in crate::parser) mod attrs {
     use super::*;
 
     /// parse a pair of single or double quotes and extract inner
     /// Once we see an opening quote, we MUST have a closing quote
     /// Returns (quote_char, inner_value)
-    pub fn parse_quoted_value(input: &str) -> VResult<'_, (char, &str)> {
+    pub(in crate::parser) fn parse_quoted_value(input: &str) -> VResult<'_, (char, &str)> {
         context(
             "quoted value",
             alt((
@@ -38,7 +37,7 @@ pub mod attrs {
     }
 
     /// Returns (attr_name, attr_value, quote_char)
-    pub fn parse_attr(input: &str) -> VResult<'_, (&str, &str, char)> {
+    pub(in crate::parser) fn parse_attr(input: &str) -> VResult<'_, (&str, &str, char)> {
         context(
             "attribute",
             separated_pair(
@@ -51,7 +50,7 @@ pub mod attrs {
         .parse(input)
     }
 
-    pub fn parse_attr_name(input: &str) -> VResult<'_, &str> {
+    pub(in crate::parser) fn parse_attr_name(input: &str) -> VResult<'_, &str> {
         take_while1(|c: char| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
             .parse(input)
     }

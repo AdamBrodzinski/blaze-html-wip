@@ -1,8 +1,8 @@
 //! Include tag nom parser
 //!
-//! Parses the <Include path="partials/foo.css" /> template tag.
+//! Parses the `<Include path="partials/foo.css" />` template tag.
 //!
-//! Unlike <Script>/<Style>, the include has no passthrough attributes: the only
+//! Unlike `<Script>`/`<Style>`, the include has no passthrough attributes: the only
 //! recognized attribute is `path`. At render time the file is read relative to the
 //! template root and its raw contents are spliced into the output verbatim.
 
@@ -18,7 +18,7 @@ use crate::ast::TemplateNode;
 use super::error::{VResult, make_error};
 use super::shared::attrs::parse_attr;
 
-pub fn parse_include(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_include(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<Include").parse(input)?;
     let (input, attrs) = many0(preceded(multispace1, parse_attr)).parse(input)?;
     let (input, _) = multispace0.parse(input)?;

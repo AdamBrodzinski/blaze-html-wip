@@ -9,12 +9,12 @@ use crate::ast::TemplateNode;
 
 use super::error::VResult;
 
-pub fn parse_escape(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_escape(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = context("escape char", preceded(tag("@"), tag("@"))).parse(input)?;
     Ok((input, TemplateNode::Escaped))
 }
 
-pub fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
     let (input, var_key) =
         context("variable", preceded(tag("@"), parse_variable_path)).parse(input)?;
     let segments: Vec<String> = var_key.split('.').map(String::from).collect();
@@ -22,7 +22,7 @@ pub fn parse_variable(input: &str) -> VResult<'_, TemplateNode> {
 }
 
 /// Parses raw/unescaped variables with @! prefix (e.g., @!foo, @!user.html_content)
-pub fn parse_variable_raw(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_variable_raw(input: &str) -> VResult<'_, TemplateNode> {
     let (input, var_key) =
         context("raw variable", preceded(tag("@!"), parse_variable_path)).parse(input)?;
     let segments: Vec<String> = var_key.split('.').map(String::from).collect();

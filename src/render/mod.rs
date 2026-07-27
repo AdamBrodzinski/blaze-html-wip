@@ -14,8 +14,8 @@ use crate::error::BlazeError;
 use context::RenderContext;
 
 pub(crate) struct ComponentTemplate {
-    pub ast: Vec<TemplateNode>,
-    pub template_len: usize,
+    pub(crate) ast: Vec<TemplateNode>,
+    pub(crate) template_len: usize,
 }
 
 pub(crate) trait ComponentResolver {
@@ -56,7 +56,7 @@ fn html_escape(s: &str) -> Cow<'_, str> {
 }
 
 // main entry point for rendering AST nodes
-pub fn render_ast<'a, R: ComponentResolver>(
+pub(crate) fn render_ast<'a, R: ComponentResolver>(
     ast_nodes: &'a [TemplateNode],
     data: &'a Value,
     template_len: usize,
@@ -346,6 +346,7 @@ fn render_value(
 mod tests {
     use super::*;
     use crate::parser::parse_template_to_ast;
+    #[cfg(feature = "cache-bust")]
     use indoc::indoc;
     use serde_json::json;
     use std::sync::Arc;

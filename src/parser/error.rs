@@ -7,15 +7,13 @@ use nom::error::{ContextError, ErrorKind, FromExternalError, ParseError};
 use std::fmt;
 
 /// Parser result type with custom error handling that preserves map_res error messages
-pub type VResult<'a, T> = nom::IResult<&'a str, T, BlazeParseError<&'a str>>;
+pub(super) type VResult<'a, T> = nom::IResult<&'a str, T, BlazeParseError<&'a str>>;
 
 /// Error kind variants for template parsing errors
 #[derive(Debug, Clone, PartialEq)]
-pub enum BlazeParseErrorKind {
+pub(crate) enum BlazeParseErrorKind {
     /// Static context string added via `context()` combinator
     Context(&'static str),
-    /// Expected character from `char()` combinator
-    Char(char),
     /// Standard nom error kind
     Nom(ErrorKind),
     /// External error message from `map_res` closure - preserves the actual error string
@@ -24,9 +22,9 @@ pub enum BlazeParseErrorKind {
 
 /// Accumulating error type that tracks parsing failures with positions
 #[derive(Debug, Clone, PartialEq)]
-pub struct BlazeParseError<I> {
+pub(crate) struct BlazeParseError<I> {
     /// List of errors with their input positions, most recent last
-    pub errors: Vec<(I, BlazeParseErrorKind)>,
+    pub(crate) errors: Vec<(I, BlazeParseErrorKind)>,
 }
 
 impl<I> ParseError<I> for BlazeParseError<I> {
@@ -65,7 +63,6 @@ impl<I: fmt::Display> fmt::Display for BlazeParseError<I> {
         for (input, kind) in &self.errors {
             match kind {
                 BlazeParseErrorKind::Context(ctx) => writeln!(f, "  in {ctx} at: {input}")?,
-                BlazeParseErrorKind::Char(c) => writeln!(f, "  expected '{c}' at: {input}")?,
                 BlazeParseErrorKind::Nom(ek) => writeln!(f, "  {:?} at: {input}", ek)?,
                 BlazeParseErrorKind::External(msg) => writeln!(f, "  {msg}")?,
             }
@@ -77,7 +74,7 @@ impl<I: fmt::Display> fmt::Display for BlazeParseError<I> {
 impl<I: fmt::Debug + fmt::Display> std::error::Error for BlazeParseError<I> {}
 
 /// Create a nom Failure error from a string message
-pub fn make_error(input: &str, msg: impl Into<String>) -> nom::Err<BlazeParseError<&str>> {
+pub(super) fn make_error(input: &str, msg: impl Into<String>) -> nom::Err<BlazeParseError<&str>> {
     nom::Err::Failure(BlazeParseError::from_external_error(
         input,
         ErrorKind::Fail,

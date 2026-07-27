@@ -4,7 +4,7 @@ use crate::ast::TemplateNode;
 
 use super::error::{BlazeParseError, VResult};
 
-pub fn parse_text(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_text(input: &str) -> VResult<'_, TemplateNode> {
     let idx = find_special_start(input).unwrap_or(input.len());
     if idx == 0 {
         return Err(nom::Err::Error(BlazeParseError::from_error_kind(

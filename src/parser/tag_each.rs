@@ -14,7 +14,7 @@ use crate::ast::{EachNode, TemplateNode};
 use super::error::{VResult, make_error};
 use super::shared::attrs::parse_quoted_value;
 
-pub fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
+pub(super) fn parse_each(input: &str) -> VResult<'_, TemplateNode> {
     let (input, _) = tag("<Each").parse(input)?;
     let (input, _) = multispace1.parse(input)?;
 
@@ -327,7 +327,7 @@ mod tests {
                     assert_eq!(each.items_path, vec!["people"]);
                     assert_eq!(each.item_binding, "p");
                     // Should have text nodes and variable
-                    assert!(each.children.len() >= 1);
+                    assert!(!each.children.is_empty());
                 }
                 _ => panic!("Expected Each node"),
             }
