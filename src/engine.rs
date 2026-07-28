@@ -16,17 +16,21 @@ use crate::{
 /// Builder for configuring a [`BlazeTemplate`] instance.
 ///
 /// # Example
-/// ```ignore
-/// use std::path::Path;
 ///
+/// ```no_run
+/// use blaze_html::{BlazeTemplate, Result};
+///
+/// # fn main() -> Result<()> {
 /// let blaze = BlazeTemplate::builder()
 ///     .template_root_dir("templates")
 ///     .register_components([
-///         ("AppLayout", Path::new("layouts/app_layout.html")),
-///         ("EmptyLayout", Path::new("layouts/empty_layout.html")),
+///         ("AppLayout", "layouts/app_layout.html"),
+///         ("EmptyLayout", "layouts/empty_layout.html"),
 ///     ])?
 ///     .dev(true)
 ///     .build();
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Debug, Clone, Default)]
 pub struct BlazeTemplateBuilder {
@@ -41,10 +45,10 @@ impl BlazeTemplateBuilder {
         Self::default()
     }
 
-    /// Set the root directory for templates.
+    /// Set the root directory for page templates, components, and includes.
     ///
-    /// Paths are stored as-is and resolved relative to cwd at runtime.
-    /// Default is `"."` (current working directory).
+    /// A relative root is resolved from the process working directory. Asset tag
+    /// paths are not affected by this setting. The default is `"."`.
     pub fn template_root_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.template_root_dir = Some(path.into());
         self
@@ -68,8 +72,10 @@ impl BlazeTemplateBuilder {
         Ok(self)
     }
 
-    /// Enable dev mode, which disables template caching between requests.
-    /// Default is `false`.
+    /// Enable development mode.
+    ///
+    /// Development mode disables page AST, component AST, and include-content
+    /// caching so file changes appear on the next render. The default is `false`.
     pub fn dev(mut self, enabled: bool) -> Self {
         self.dev = enabled;
         self
@@ -94,17 +100,27 @@ impl BlazeTemplateBuilder {
 
 /// HTML template engine with caching support.
 ///
+/// Cloning an engine is inexpensive: clones share the same page, component, and
+/// include caches. Page templates, components, and includes are resolved relative
+/// to the configured template root. Asset tag paths are instead resolved from the
+/// process working directory and are not affected by the template root.
+///
 /// # Example
-/// ```ignore
+///
+/// ```no_run
+/// use blaze_html::{BlazeTemplate, Result};
+/// use serde_json::json;
+///
+/// # fn main() -> Result<()> {
 /// let blaze = BlazeTemplate::builder()
 ///     .template_root_dir("templates")
 ///     .dev(true)
 ///     .build();
 ///
-/// blaze.render_page("pages/home.html", &json!({ "name": "Ada" }));
-///
-/// // Pages that take no data:
-/// blaze.render_page_static("pages/about.html");
+/// let home = blaze.render_page("pages/home.html", &json!({ "name": "Ada" }))?;
+/// let about = blaze.render_page_static("pages/about.html")?;
+/// # Ok(())
+/// # }
 /// ```
 #[derive(Clone)]
 pub struct BlazeTemplate {
@@ -153,16 +169,19 @@ impl BlazeTemplate {
         self.inner.dev
     }
 
-    /// Returns the configured template root directory.
+    /// Returns the root directory used for page templates, components, and includes.
+    ///
+    /// Asset tag paths are not resolved relative to this directory.
     pub fn template_root_dir(&self) -> &std::path::Path {
         &self.inner.template_root_dir
     }
 
-    /// Pre-compile page templates and cache their ASTs for faster rendering.
+    /// Validate page templates and cache their ASTs for faster rendering.
     ///
-    /// Templates are processed in iteration order. Each successful template is cached
-    /// immediately, and processing stops at the first error. This is useful for warming
-    /// up the cache at application startup.
+    /// Templates are processed in iteration order, and processing stops at the first
+    /// error. Outside development mode, each successful template is cached immediately,
+    /// making this useful for warming the cache at application startup. In development
+    /// mode, templates are still read, parsed, and validated but are not cached.
     pub fn compile_page_templates<I, P>(&self, rel_page_paths: I) -> crate::error::Result<()>
     where
         I: IntoIterator<Item = P>,
