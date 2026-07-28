@@ -58,6 +58,10 @@ impl BlazeTemplateBuilder {
     ///
     /// Component paths are resolved relative to [`Self::template_root_dir`].
     /// If a name occurs more than once, the last path replaces the earlier one.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BlazeError::Render`] if a component name is invalid or reserved.
     pub fn register_components<I, N, P>(mut self, components: I) -> crate::error::Result<Self>
     where
         I: IntoIterator<Item = (N, P)>,
@@ -182,6 +186,11 @@ impl BlazeTemplate {
     /// error. Outside development mode, each successful template is cached immediately,
     /// making this useful for warming the cache at application startup. In development
     /// mode, templates are still read, parsed, and validated but are not cached.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if a page cannot be read or parsed, or if it references an
+    /// unregistered component.
     pub fn compile_page_templates<I, P>(&self, rel_page_paths: I) -> crate::error::Result<()>
     where
         I: IntoIterator<Item = P>,
@@ -207,6 +216,12 @@ impl BlazeTemplate {
     ///
     /// Accepts any [`Serialize`] type, so view models can be passed directly
     /// without converting to [`serde_json::Value`] first.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the data cannot be serialized; a page, component, or
+    /// include cannot be read or parsed; template data cannot be resolved or rendered;
+    /// or an asset cannot be hashed.
     pub fn render_page(
         &self,
         rel_page_path: &str,
@@ -249,6 +264,11 @@ impl BlazeTemplate {
     ///
     /// Equivalent to [`Self::render_page`] with an empty data set. Templates that
     /// reference a variable still error, since there is nothing to resolve against.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the page or one of its dependencies cannot be read,
+    /// parsed, or rendered. This includes templates that reference variables.
     pub fn render_page_static(&self, rel_page_path: &str) -> crate::error::Result<String> {
         // An empty object rather than `()`/null, so a template that does reference a
         // variable reports "not found in object" instead of "non-object value".

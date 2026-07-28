@@ -4,47 +4,90 @@ use std::path::PathBuf;
 
 use crate::parser::error::{BlazeParseError, BlazeParseErrorKind};
 
+/// Result type returned by BlazeHTML operations.
 pub type Result<T> = std::result::Result<T, BlazeError>;
 
+/// An error produced while preparing or rendering a template.
+///
+/// This enum is non-exhaustive so new error categories can be added without a
+/// breaking change.
+///
+/// # Example
+///
+/// ```
+/// use blaze_html::BlazeError;
+///
+/// fn report(error: &BlazeError) {
+///     match error {
+///         BlazeError::Parse(details) => {
+///             eprintln!("{}:{}: {}", details.line, details.column, details.message);
+///         }
+///         other => eprintln!("{other}"),
+///     }
+/// }
+/// ```
 #[derive(Debug)]
 #[non_exhaustive]
 pub enum BlazeError {
+    /// The template does not conform to BlazeHTML syntax.
     Parse(ParseErrorDetails),
+    /// A template, component, include, or asset file operation failed.
     Io(IoErrorDetails),
+    /// Template data or structure could not be rendered.
     Render(RenderErrorDetails),
+    /// The supplied view model could not be converted to JSON.
     Serialize(serde_json::Error),
 }
 
+/// Location and context for a template parsing failure.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct ParseErrorDetails {
+    /// Human-readable description of the parsing failure.
     pub message: String,
+    /// One-based line number where the failure occurred.
     pub line: usize,
+    /// One-based character column where the failure occurred.
     pub column: usize,
+    /// Source line containing the failure, or an empty string when unavailable.
     pub line_content: String,
+    /// Parser context chain, ordered from the outermost context inward.
     pub context: Vec<&'static str>,
 }
 
+/// Details about a failed filesystem operation.
 #[derive(Debug)]
 #[non_exhaustive]
 pub struct IoErrorDetails {
+    /// The operation that was attempted.
     pub operation: IoOperation,
+    /// Filesystem path used by the operation.
     pub path: PathBuf,
+    /// Underlying I/O error.
     pub source: io::Error,
 }
 
+/// Filesystem operation that failed during template processing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum IoOperation {
+    /// Reading a page or component template.
     ReadTemplate,
+    /// Reading the raw contents of an include file.
     ReadInclude,
+    /// Reading an asset to generate its cache-busting hash.
+    ///
+    /// This operation is only performed when the `cache-bust` feature is enabled.
     HashAsset,
 }
 
+/// Details about a value or template construct that could not be rendered.
 #[derive(Debug, Clone)]
 #[non_exhaustive]
 pub struct RenderErrorDetails {
+    /// Variable, component, or other template construct associated with the error.
     pub variable: String,
+    /// Human-readable description of the rendering failure.
     pub message: String,
 }
 

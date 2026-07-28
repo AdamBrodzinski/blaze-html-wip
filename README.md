@@ -32,7 +32,7 @@ Fast server-side HTML templating for Rust, designed around component-first ergon
         <If exists="@post.author">by @post.author</If>
       </Card>
     </Each>
-<AppLayout>
+</AppLayout>
 ```
 
 ```rust
@@ -69,6 +69,7 @@ Add the following dependencies to your `Cargo.toml`:
 [dependencies]
 blaze-html = "0.1"
 serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 ```
 
 Copy the `blaze-html-skill/*` directory into your projects `.agents/skills` directory in order to speedup LLM usage. Agents typically work well without it but they tend to grep the source code and tests in order to determine what features are available.
@@ -331,7 +332,7 @@ let blaze = BlazeTemplate::builder()
 
 ### Warming the cache
 
-`compile_page_templates` parses each template, validates that every component it references is registered, and caches successful results — useful at startup so the first request doesn't pay for parsing, and so a broken template fails at boot instead of in production. Pages are processed in order; processing stops at the first error, while pages compiled before it remain cached.
+`compile_page_templates` parses each page, validates that every component it references is registered, and caches successful results — useful at startup so the first request doesn't pay for parsing and broken page templates fail at boot. Pages are processed in order; processing stops at the first error, while pages compiled before it remain cached. In dev mode, pages are still read, parsed, and validated but are not cached.
 
 ```rust
 blaze.compile_page_templates([
@@ -403,7 +404,7 @@ Context: asset tag -> closing tag
 
 ## Performance
 
-- **Parse once.** Templates, components, and includes are parsed to an AST and cached by path; subsequent renders walk the AST directly.
+- **Parse once.** Page and component templates are parsed to cached ASTs, while include files are cached as raw text. Subsequent renders reuse those cached results.
 - **Borrow, don't clone.** The scope chain holds `&Value` / `&str` borrows into your data and the cached AST — iterating a 10k-row `<Each>` allocates no scope names and copies no data.
 - **One buffer.** Rendering writes into a single `String` pre-sized from the template length; asset tags and HTML escaping write in place, and escaping is skipped entirely for strings with nothing to escape.
 

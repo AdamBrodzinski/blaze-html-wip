@@ -1,6 +1,12 @@
-//! # BlazeHTML - A component driven web template library
+#![warn(missing_docs)]
+
+//! A component-driven server-side HTML template engine.
 //!
-//! ## Example
+//! Templates are loaded at runtime and use `@name` for variable interpolation.
+//! Variables are HTML-escaped by default; `@!name` emits trusted content without
+//! escaping.
+//!
+//! # Example
 //!
 //! ```no_run
 //! use blaze_html::BlazeTemplate;
