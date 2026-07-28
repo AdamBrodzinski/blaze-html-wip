@@ -17,7 +17,7 @@
 //! )?;
 //! # Ok(())
 //! # }
-//!
+//! ```
 
 pub use crate::engine::{BlazeTemplate, BlazeTemplateBuilder};
 pub use crate::error::{

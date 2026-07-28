@@ -215,7 +215,7 @@ Rules:
 - `Each`, `Icon`, `If`, `Image`, `Include`, `Preload`, `Script`, `Style`, and `Slot` are reserved
 - Components must be registered before the templates that use them are compiled or rendered — an unregistered tag is an error, not silent passthrough
 - Children are rendered in the **caller's** scope; the component body sees its props plus the root data, but not the caller's local bindings
-- Component nesting is limited to 10 levels per render; attempting an 11th level returns an error identifying the component that exceeded the limit
+- Component nesting is limited to 64 levels per render; attempting a 65th level returns an error identifying the component that exceeded the limit
 
 ### Each
 

@@ -29,8 +29,8 @@ pub(crate) trait ComponentResolver {
     fn resolve_include(&self, path: &str) -> crate::error::Result<std::sync::Arc<String>>;
 }
 
-/// The page itself is depth zero, so up to ten nested component renders are allowed.
-const MAX_COMPONENT_NESTING_DEPTH: usize = 10;
+/// The page itself is depth zero, so up to 64 nested component renders are allowed.
+const MAX_COMPONENT_NESTING_DEPTH: usize = 64;
 
 fn html_escape(s: &str) -> Cow<'_, str> {
     let first_special_idx = s.find(['<', '>', '&', '"', '\'']);
@@ -1088,36 +1088,41 @@ mod tests {
         }
 
         #[test]
-        fn finite_recursive_component_allows_ten_levels() {
+        fn finite_recursive_component_allows_the_maximum_depth() {
             let resolver = resolver_with(&[(
                 "Node",
                 r#"@node.value;<If exists="@node.child"><Node node="@node.child"/></If>"#,
             )]);
             let page = r#"<Node node="@root"/>"#;
             let ast = parse_template_to_ast(page).unwrap();
-            let data = json!({ "root": nested_node(10) });
+            let data = json!({ "root": nested_node(MAX_COMPONENT_NESTING_DEPTH) });
 
             let html = render_ast(&ast, &data, page.len(), &resolver).unwrap();
+            let expected = (1..=MAX_COMPONENT_NESTING_DEPTH)
+                .map(|value| format!("{value};"))
+                .collect::<String>();
 
-            assert_eq!(html, "1;2;3;4;5;6;7;8;9;10;");
+            assert_eq!(html, expected);
         }
 
         #[test]
-        fn recursive_component_errors_on_the_eleventh_level() {
+        fn recursive_component_errors_above_the_maximum_depth() {
             let resolver = resolver_with(&[(
                 "Node",
                 r#"@node.value;<If exists="@node.child"><Node node="@node.child"/></If>"#,
             )]);
             let page = r#"<Node node="@root"/>"#;
             let ast = parse_template_to_ast(page).unwrap();
-            let data = json!({ "root": nested_node(11) });
+            let data = json!({ "root": nested_node(MAX_COMPONENT_NESTING_DEPTH + 1) });
 
             let err = render_ast(&ast, &data, page.len(), &resolver)
                 .unwrap_err()
                 .to_string();
 
             assert!(
-                err.contains("maximum component nesting depth of 10 exceeded"),
+                err.contains(&format!(
+                    "maximum component nesting depth of {MAX_COMPONENT_NESTING_DEPTH} exceeded"
+                )),
                 "unexpected error: {err}"
             );
             assert!(
@@ -1137,9 +1142,9 @@ mod tests {
                 .to_string();
 
             assert!(
-                err.contains(
-                    "maximum component nesting depth of 10 exceeded while rendering <Menu>"
-                ),
+                err.contains(&format!(
+                    "maximum component nesting depth of {MAX_COMPONENT_NESTING_DEPTH} exceeded while rendering <Menu>"
+                )),
                 "unexpected error: {err}"
             );
         }
@@ -1158,9 +1163,9 @@ mod tests {
                 .to_string();
 
             assert!(
-                err.contains(
-                    "maximum component nesting depth of 10 exceeded while rendering <Menu>"
-                ),
+                err.contains(&format!(
+                    "maximum component nesting depth of {MAX_COMPONENT_NESTING_DEPTH} exceeded while rendering <Menu>"
+                )),
                 "unexpected error: {err}"
             );
         }
@@ -1168,7 +1173,8 @@ mod tests {
         #[test]
         fn slot_components_count_toward_the_nesting_limit() {
             let resolver = resolver_with(&[("Wrap", "<Slot/>")]);
-            let page = format!("{}x{}", "<Wrap>".repeat(11), "</Wrap>".repeat(11));
+            let depth = MAX_COMPONENT_NESTING_DEPTH + 1;
+            let page = format!("{}x{}", "<Wrap>".repeat(depth), "</Wrap>".repeat(depth));
             let ast = parse_template_to_ast(&page).unwrap();
 
             let err = render_ast(&ast, &json!({}), page.len(), &resolver)
@@ -1176,7 +1182,9 @@ mod tests {
                 .to_string();
 
             assert!(
-                err.contains("maximum component nesting depth of 10 exceeded"),
+                err.contains(&format!(
+                    "maximum component nesting depth of {MAX_COMPONENT_NESTING_DEPTH} exceeded"
+                )),
                 "unexpected error: {err}"
             );
         }
