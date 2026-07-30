@@ -156,6 +156,8 @@ let html = blaze.render_page("pages/home.html", &HomeView { user, posts })?;
 @user.profile.email       <!-- arbitrarily deep -->
 ```
 
+Variable names are case-sensitive. Each path segment must contain one or more Unicode letters, numbers, or `_` characters; segments are separated by `.` with no empty segments.
+
 Strings, numbers, booleans, and `null` render as text. Arrays and objects are an error — render them with `<Each>` or reach a leaf value.
 
 **Escaping.** `@variable` HTML-escapes `< > & " '`. To emit trusted markup unescaped, opt in with `@!`:
@@ -215,8 +217,15 @@ Rules:
 - Names must start with an uppercase ASCII letter, followed by letters, digits, or `_`
 - `Each`, `Icon`, `If`, `Image`, `Include`, `Preload`, `Script`, `Style`, and `Slot` are reserved
 - Components must be registered before the templates that use them are compiled or rendered — an unregistered tag is an error, not silent passthrough
+- Component props require single- or double-quoted values; bare boolean props are not supported
 - Children are rendered in the **caller's** scope; the component body sees its props plus the root data, but not the caller's local bindings
 - Component nesting is limited to 64 levels per render; attempting a 65th level returns an error identifying the component that exceeded the limit
+
+#### Slots
+
+`<Slot/>` marks where a component's children are inserted. Rendering `<Slot/>` outside a component invocation is an error. If a component template has no slot, children passed to that component are ignored and are not evaluated.
+
+Slot children are rendered once in the caller's scope and the resulting HTML is inserted at every slot site. Multiple `<Slot/>` tags therefore duplicate the same rendered children; a slot inside an `<Each>` inserts them on every iteration. Slot children are evaluated eagerly when the component template contains a slot, including a slot nested under an untaken `<If>` or an empty `<Each>`.
 
 ### Each
 
@@ -225,6 +234,8 @@ Rules:
   <li>@person.name — @person.role</li>
 </Each>
 ```
+
+The attributes are required in the order shown: `items` followed by `as`. Both values must be single- or double-quoted, and no additional attributes are accepted. The `as` value must be a single identifier beginning with a Unicode letter or `_`, followed by Unicode letters, numbers, or `_`.
 
 `items` must resolve to a JSON array. The `as` binding is scoped to the block and shadows outer names; outer data stays reachable:
 
@@ -247,6 +258,8 @@ Five attributes, three semantics — pick the one that says what you mean:
 | `truthy="@x"` | `x` is JS-like truthy (non-empty string, non-zero number, non-empty array, …) |
 | `falsy="@x"` | `x` is JS-like falsy |
 | `exists="@x"` | the path is present at all — never errors on a missing key |
+
+An `<If>` opening tag accepts exactly one of these attributes and no others. Its value must be a single- or double-quoted variable path beginning with `@`.
 
 ```html
 <If true="@user.is_admin">
@@ -284,9 +297,9 @@ renders as:
 <link rel="preload" href="/assets/hero.webp?v=…" as="image">
 ```
 
-`path` is required; every other attribute passes through to the output, preserving the original quote style of valued attributes. Bare boolean attributes are accepted and normalized (`defer` renders as `defer="defer"`). The hash is the first 32 hex characters of the file's BLAKE3 digest, so the URL changes exactly when the file's bytes do.
+`path` is required and must be a static, quoted value. Every other attribute passes through to the output, preserving the original quote style of valued attributes. Bare boolean attributes are accepted and normalized (`defer` renders as `defer="defer"`). Attribute values are static literals: `@name` is not interpolated, and values are emitted verbatim without HTML escaping. Use only trusted attribute values.
 
-> **Note:** asset `path` values are resolved relative to the **process working directory** (they mirror the public URL), not `template_root_dir`. A leading `/` is added if absent.
+With the default `cache-bust` feature, `path` is also used as a filesystem path to hash the asset. Relative paths resolve from the **process working directory**, while paths beginning with `/` are absolute filesystem paths; `template_root_dir` is never used for assets. In the generated public URL, a leading `/` is added to relative paths. The hash is the first 32 hex characters of the file's BLAKE3 digest, so the URL changes exactly when the file's bytes do.
 
 ### Include
 

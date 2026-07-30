@@ -48,7 +48,9 @@ impl BlazeTemplateBuilder {
     /// Set the root directory for page templates, components, and includes.
     ///
     /// A relative root is resolved from the process working directory. Asset tag
-    /// paths are not affected by this setting. The default is `"."`.
+    /// paths are not affected by this setting: when cache busting is enabled,
+    /// relative asset filesystem paths resolve from the process working directory
+    /// and paths beginning with `/` remain absolute. The default is `"."`.
     pub fn template_root_dir(mut self, path: impl Into<PathBuf>) -> Self {
         self.template_root_dir = Some(path.into());
         self
@@ -106,8 +108,9 @@ impl BlazeTemplateBuilder {
 ///
 /// Cloning an engine is inexpensive: clones share the same page, component, and
 /// include caches. Page templates, components, and includes are resolved relative
-/// to the configured template root. Asset tag paths are instead resolved from the
-/// process working directory and are not affected by the template root.
+/// to the configured template root. Asset tag paths are not affected by that root:
+/// when cache busting is enabled, relative asset filesystem paths resolve from the
+/// process working directory and paths beginning with `/` remain absolute.
 ///
 /// # Example
 ///
@@ -175,7 +178,9 @@ impl BlazeTemplate {
 
     /// Returns the root directory used for page templates, components, and includes.
     ///
-    /// Asset tag paths are not resolved relative to this directory.
+    /// Asset tag paths are not resolved relative to this directory. When cache
+    /// busting is enabled, relative asset filesystem paths resolve from the process
+    /// working directory and paths beginning with `/` remain absolute.
     pub fn template_root_dir(&self) -> &std::path::Path {
         &self.inner.template_root_dir
     }
