@@ -1,10 +1,12 @@
 #![warn(missing_docs)]
-
-//! A component-driven server-side HTML template engine.
+//! Fast server-side HTML templating for Rust, designed around component-first ergonomics. Build isolated components, pass data down as props, and keep front-end-style organization without a front-end framework. BlazeHTML pairs naturally with [htmx](https://htmx.org) and [Datastar](https://data-star.dev).
 //!
-//! Templates are loaded at runtime and use `@name` for variable interpolation.
-//! Variables are HTML-escaped by default; `@!name` emits trusted content without
-//! escaping.
+//! - Fast iteration workflow, zero recompiles for HTML, CSS, JS changes
+//! - Modern component organization
+//! - Logic is written and tested in Rust, minimal markup testing
+//! - Markup works with existing html editor tooling
+//! - Compose generic components that pass data through as props (lexically scoped)
+//! - Variables are automatically escaped
 //!
 //! # Example
 //!
