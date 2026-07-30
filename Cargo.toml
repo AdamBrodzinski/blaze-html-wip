@@ -2,6 +2,14 @@
 name = "blaze-html"
 version = "0.1.0"
 edition = "2024"
+description = "A fast, component-driven server-side HTML template engine"
+license = "MIT"
+repository = "https://github.com/AdamBrodzinski/blaze-html-wip"
+homepage = "https://github.com/AdamBrodzinski/blaze-html-wip"
+documentation = "https://docs.rs/blaze-html"
+readme = "README.md"
+keywords = ["html", "template", "components", "server-side"]
+categories = ["template-engine", "web-programming"]
 
 [features]
 default = ["cache-bust"]
